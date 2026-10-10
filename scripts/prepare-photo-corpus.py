@@ -33,7 +33,7 @@ def main():
     copies.mkdir()
     for index in range(args.copies):
         photo = manifest["photos"][index % len(manifest["photos"])]
-        shutil.copyfile(originals / photo["file"], copies / f"foto-{index:04}.jpg")
+        shutil.copyfile(originals / photo["file"], copies / f"photo-{index:03}.jpg")
     manifest["files"] = args.copies
     manifest["corpus"] = f"{args.copies} copias físicas sin recodificar, distribuidas cíclicamente por nombre"
     (args.destination / "procedencia.json").write_text(

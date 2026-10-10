@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-10",
+  "baseline_commit": "90541bafdf1b9b33ca67fa4dcdccdb29baeba16f",
+  "optimized_commit": "30e54a35025c021345bb73e9aaff5e53040eb788",
+  "baseline_measure_sha256": "6ca9db9a21b17dc0a337c4f68a837e654dec8f5de78377172f248878bf5bfd8b",
+  "optimized_measure_sha256": "dbbc1becf78ca98eac93939be2123f1c186837a1e15d9ade4653c517de3004f0",
+  "native_sha256": "c25729be8152094d728b28b70e4072ffad61eb8a75c0fffe75d42bc61875abc2",
+  "rustc": "1.99.0 (b940084d7 2026-09-28)",
+  "host": "x86_64-pc-windows-gnu",
+  "profile": "release, thin LTO, codegen-units=1, locked",
+  "native_features": [
+    "capture"
+  ],
+  "measure_features": [],
+  "dirty_during_measurements": false,
+  "synthetic_corpus": {
+    "dimensions": [
+      64,
+      48
+    ],
+    "format": "PNG RGB",
+    "bytes_per_file": 3265,
+    "sha256": "4797067511650667cd279d663dce2385b5714b290bcb8bd96d12c8f42c459fa8"
+  },
+  "comparability": "Same corpus paths/options; five sequential repetitions before and after. No OS cache purge. Two photo downloads overlapped the beginning of baseline collection; no simultaneous agent compilation or other benchmark."
+}

@@ -1,5 +1,7 @@
 # Primeras mediciones de Rastera
 
+Esta referencia histórica se complementa con la [comparación posterior de caché y navegación con fotografías](performance-cache-results.md), que mide y reduce el coste del mantenimiento señalado al final.
+
 Fecha: 10 de octubre de 2026. Versión medida: 0.1.0, commit 0aa3f4e56667992a0b0700ef4c590b5c29f92710, sin cambios locales durante las ejecuciones. Esta es una referencia inicial de procesamiento y memoria; no compara Rastera con otros visores.
 
 ## Equipo y escenarios

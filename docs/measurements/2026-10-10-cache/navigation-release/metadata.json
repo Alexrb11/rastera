@@ -1,0 +1,11 @@
+{
+  "modified": false,
+  "commit": "30e54a35025c021345bb73e9aaff5e53040eb788",
+  "executable_sha256": "c25729be8152094d728b28b70e4072ffad61eb8a75c0fffe75d42bc61875abc2",
+  "runs": 5,
+  "window": "Hidden",
+  "input": "<pictures>/Rastera-Pruebas-2026-10-10/Navegacion-144",
+  "cache": "Rastera; no se purga la caché del sistema operativo",
+  "viewport_points": "1180x780",
+  "executable": "<repo>/target/release/rastera.exe"
+}

@@ -42,6 +42,7 @@ El diseño favorece la carga progresiva y la reutilización de recursos. Usar Ru
 - [Plan de desarrollo](docs/roadmap.md): entregas y criterios de aceptación.
 - [Medir rendimiento](docs/performance.md): contadores, banco reproducible y medición del proceso.
 - [Resultados iniciales](docs/performance-results.md): equipo, escenarios, observaciones y límites de la comparación.
+- [Optimización de caché y navegación](docs/performance-cache-results.md): comparación antes/después y recorridos nativos con fotografías reales.
 
 La inspiración de producto es el enfoque de aplicaciones nativas y locales de [Artcraft](https://getartcraft.com/apps). Rastera tendrá su propio alcance y diseño.
 

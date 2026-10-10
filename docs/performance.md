@@ -4,6 +4,8 @@ Herramientas → Diagnóstico de rendimiento abre contadores locales de la sesi�
 
 Los [resultados iniciales del 10 de octubre de 2026](performance-results.md) incluyen las observaciones CSV y el equipo de referencia.
 
+La [comparación del mantenimiento y la navegación con fotografías](performance-cache-results.md) documenta la optimización posterior, cinco repeticiones antes/después y 230 pasos nativos.
+
 Las reservas estiman buffers y entrega, no toda la RAM. Los tamaños GPU excluyen copias y sobrecostes del controlador. La duración del trabajador incluye inspección, espera de memoria, decodificación y color hasta encolar el resultado; no mide la presentación en pantalla. No se transmiten datos fuera de la aplicación.
 
 ## Banco del procesamiento

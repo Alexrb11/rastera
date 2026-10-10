@@ -101,4 +101,4 @@ Los valores de caché del diseño son presupuestos iniciales; los objetivos de l
 
 Consultar la [arquitectura](architecture.md) para las responsabilidades y garantías de cada componente.
 
-La primera [línea de referencia medida](performance-results.md) registra caché, escaneo y memoria nativa. El procesamiento completo de 10.000 miniaturas crece más que el número de archivos; perfilar el mantenimiento de la caché en disco es una prioridad antes de ampliar este banco.
+La primera [línea de referencia medida](performance-results.md) registra caché, escaneo y memoria nativa. La [comparación posterior](performance-cache-results.md) atribuye el coste principal de la caché caliente al mantenimiento repetido y lo amortiza: 10.000 miniaturas sintéticas pasan de una mediana de 26,121 s a 1,613 s. También registra 230 pasos nativos sin errores con cuatro fotografías reales repetidas en 144 archivos y un máximo de 128 miniaturas residentes. Quedan pendientes mayor diversidad del corpus, entrada/presentación, navegación prolongada, zoom y lotes concurrentes; esta medición no cierra todos los criterios de la fase 2.
