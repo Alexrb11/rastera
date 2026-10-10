@@ -20,7 +20,7 @@ La GPU recibe solo mosaicos visibles, con un máximo de 60 entradas de 512 píxe
 
 Actualizar vuelve a leer la carpeta y limpia las texturas y la selección. Las miniaturas persistentes se invalidan por ruta, tamaño, fecha de modificación, resolución y versión del procesamiento. Esta señal detecta cambios habituales, pero no modificaciones que conserven tamaño y fecha.
 
-La caché de miniaturas está junto al catálogo, en thumbnails-v1. Se puede borrar con la aplicación cerrada sin perder favoritos ni etiquetas. Su objetivo es 2 GiB, con limpieza cada 64 peticiones y un margen máximo de unos 16 MiB de nuevas miniaturas por trabajador entre limpiezas. Se expulsan las entradas más antiguas por fecha de escritura. Las entradas dañadas se regeneran; si la caché falla, la imagen se carga desde el original.
+La caché de miniaturas está junto al catálogo, en thumbnails-v1. Se puede borrar con la aplicación cerrada sin perder favoritos ni etiquetas. Su objetivo es 2 GiB. Se revisa al comenzar, después de escribir 16 MiB de registros y al atender una petición si han pasado 60 segundos desde la última revisión. Leer miniaturas guardadas no provoca recorridos por número de peticiones. El margen de escrituras entre revisiones es 16 MiB más un registro como máximo por trabajador; varias instancias no comparten un límite estricto. Solo se ordenan y expulsan las entradas antiguas cuando se supera la cuota. Las entradas dañadas se regeneran; si la caché falla, la imagen se carga desde el original. La revisión comprueba la cancelación mientras enumera y elimina.
 
 ## Organizar
 

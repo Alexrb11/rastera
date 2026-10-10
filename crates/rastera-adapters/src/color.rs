@@ -331,7 +331,11 @@ mod tests {
             );
             let (info, mut decoder) = crate::images::decoder(&plan.items[0].destination).unwrap();
             let bytes = decoder.icc_profile().unwrap().unwrap();
-            assert_eq!(bytes, srgb_profile().unwrap());
+            let mut expected_profile = srgb_profile().unwrap();
+            // ICC creation timestamps may cross a second while exporting. Compare
+            // every other byte, including the complete color transform payload.
+            expected_profile[24..36].copy_from_slice(&bytes[24..36]);
+            assert_eq!(bytes, expected_profile);
             // All exported formats are readable through the same validated color pipeline.
             let roundtrip = LocalImages
                 .decode(&plan.items[0].destination, &info, 8, &Default::default())

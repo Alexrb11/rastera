@@ -15,8 +15,8 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::{
-        Arc,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -24,6 +24,14 @@ use std::{
 const MAGIC: &[u8; 8] = b"RASTH002";
 const MAX_RECORD: u64 = 256 * 256 * 4 + 65_536 + 40;
 const DISK_BUDGET: u64 = 2 * 1024 * 1024 * 1024;
+const SWEEP_WRITTEN_BYTES: u64 = 16 * 1024 * 1024;
+const RECONCILE_INTERVAL: Duration = Duration::from_secs(60);
+
+#[derive(Default)]
+struct Maintenance {
+    last: Option<Instant>,
+    written: u64,
+}
 
 pub struct CachedThumbnails {
     hits: AtomicU64,
@@ -31,7 +39,7 @@ pub struct CachedThumbnails {
     root: Option<PathBuf>,
     source: Arc<dyn ImageBackend>,
     budget: u64,
-    requests: AtomicUsize,
+    maintenance: Mutex<Maintenance>,
     maintenance_runs: AtomicU64,
     maintenance_ns: AtomicU64,
     maintenance_files: AtomicU64,
@@ -63,7 +71,7 @@ impl CachedThumbnails {
             root,
             source: Arc::new(LocalImages),
             budget: DISK_BUDGET,
-            requests: AtomicUsize::new(0),
+            maintenance: Mutex::new(Maintenance::default()),
             maintenance_runs: AtomicU64::new(0),
             maintenance_ns: AtomicU64::new(0),
             maintenance_files: AtomicU64::new(0),
@@ -135,9 +143,9 @@ impl CachedThumbnails {
             info: info.clone(),
         })
     }
-    fn write(&self, path: &Path, key: &[u8], image: &DecodedImage) -> std::io::Result<()> {
+    fn write(&self, path: &Path, key: &[u8], image: &DecodedImage) -> std::io::Result<u64> {
         if key.len() > 65_536 {
-            return Ok(());
+            return Ok(0);
         }
         fs::create_dir_all(path.parent().unwrap())?;
         let mut temp = tempfile::Builder::new()
@@ -155,24 +163,41 @@ impl CachedThumbnails {
         temp.flush()?;
         // Replacing a disposable cache entry is safe; originals are never written.
         temp.persist(path).map_err(|e| e.error)?;
+        Ok(36 + key.len() as u64 + image.rgba.len() as u64)
+    }
+    fn maintain(&self, root: &Path, written: u64, cancel: &CancellationToken) -> Result<()> {
+        let mut state = self.maintenance.lock().unwrap_or_else(|e| e.into_inner());
+        state.written = state.written.saturating_add(written);
+        cancel.check()?;
+        if state
+            .last
+            .is_none_or(|last| last.elapsed() >= RECONCILE_INTERVAL)
+            || state.written >= SWEEP_WRITTEN_BYTES.min(self.budget)
+        {
+            self.sweep(root, cancel)?;
+            state.last = Some(Instant::now());
+            state.written = 0;
+        }
         Ok(())
     }
-    fn sweep(&self, root: &Path) {
+    fn sweep(&self, root: &Path, cancel: &CancellationToken) -> Result<()> {
         let started = Instant::now();
         self.maintenance_runs.fetch_add(1, Ordering::Relaxed);
-        self.sweep_files(root);
+        let result = self.sweep_files(root, cancel);
         self.maintenance_ns.fetch_add(
             started.elapsed().as_nanos().min(u64::MAX as u128) as u64,
             Ordering::Relaxed,
         );
+        result
     }
-    fn sweep_files(&self, root: &Path) {
+    fn sweep_files(&self, root: &Path, cancel: &CancellationToken) -> Result<()> {
         let Ok(entries) = fs::read_dir(root) else {
-            return;
+            return Ok(());
         };
         let mut files = Vec::new();
         let mut total = 0u64;
         for entry in entries.flatten() {
+            cancel.check()?;
             let path = entry.path();
             let Some(name) = path.file_name().and_then(|v| v.to_str()) else {
                 continue;
@@ -193,8 +218,13 @@ impl CachedThumbnails {
             self.maintenance_files.fetch_add(1, Ordering::Relaxed);
             files.push((meta.modified().ok(), meta.len(), path));
         }
+        if total <= self.budget {
+            return Ok(());
+        }
+        cancel.check()?;
         files.sort_unstable_by_key(|a| a.0);
         for (_, size, path) in files {
+            cancel.check()?;
             if total <= self.budget {
                 break;
             }
@@ -203,6 +233,7 @@ impl CachedThumbnails {
                 total = total.saturating_sub(size);
             }
         }
+        Ok(())
     }
 }
 impl ImageBackend for CachedThumbnails {
@@ -232,10 +263,7 @@ impl ImageBackend for CachedThumbnails {
             .as_ref()
             .map(|root| root.join(format!("{:016x}.thumb", Self::hash(&key))));
         if let Some(root) = &self.root {
-            let requests = self.requests.fetch_add(1, Ordering::Relaxed);
-            if requests.is_multiple_of(64) || self.budget < 16 * 1024 * 1024 {
-                self.sweep(root);
-            }
+            self.maintain(root, 0, cancel)?;
         }
         if let Some(image) = cache.as_ref().and_then(|p| Self::read(p, &key, info, edge)) {
             cancel.check()?;
@@ -251,11 +279,10 @@ impl ImageBackend for CachedThumbnails {
         self.misses.fetch_add(1, Ordering::Relaxed);
         let image = self.source.decode(path, info, edge, cancel)?;
         cancel.check()?;
-        if let Some(cache) = cache {
-            let _ = self.write(&cache, &key, &image);
-            if self.budget < 16 * 1024 * 1024 {
-                self.sweep(cache.parent().unwrap());
-            }
+        if let Some(cache) = cache
+            && let Ok(written) = self.write(&cache, &key, &image)
+        {
+            self.maintain(cache.parent().unwrap(), written, cancel)?;
         }
         Ok(image)
     }
@@ -264,7 +291,42 @@ impl ImageBackend for CachedThumbnails {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
     struct Counting(AtomicUsize);
+    #[test]
+    fn repeated_hits_skip_inventory_and_elapsed_time_reconciles_external_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.png");
+        image::RgbaImage::new(20, 10).save(&path).unwrap();
+        let root = dir.path().join("cache");
+        let mut cache = CachedThumbnails::new(Some(root.clone()));
+        cache.budget = 4096;
+        let info = cache.inspect(&path).unwrap();
+        for _ in 0..200 {
+            cache
+                .decode(&path, &info, 8, &CancellationToken::default())
+                .unwrap();
+        }
+        assert_eq!(cache.stats().hits, 199);
+        assert_eq!(cache.stats().maintenance_runs, 1);
+        // An external writer can add entries; the time-based reconciliation still enforces quota.
+        fs::write(root.join("0000000000000000.thumb"), vec![0; 8192]).unwrap();
+        fs::write(root.join("keep.txt"), b"foreign").unwrap();
+        cache.maintenance.lock().unwrap().last = Some(Instant::now() - RECONCILE_INTERVAL);
+        cache
+            .decode(&path, &info, 8, &CancellationToken::default())
+            .unwrap();
+        let owned_bytes: u64 = fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "thumb"))
+            .map(|entry| entry.metadata().unwrap().len())
+            .sum();
+        assert!(owned_bytes <= cache.budget);
+        assert!(root.join("keep.txt").exists());
+        assert_eq!(cache.stats().maintenance_runs, 2);
+        assert!(cache.stats().evicted_files >= 1);
+    }
     impl ImageBackend for Counting {
         fn inspect(&self, path: &Path) -> Result<ImageInfo> {
             LocalImages.inspect(path)
