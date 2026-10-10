@@ -14,6 +14,7 @@ rastera-adapters = { path = "crates/rastera-adapters" }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 crossbeam-channel = "0.5.15"
 tempfile = "3.23"
+rusqlite = { version = "0.40.2", features = ["bundled", "backup"] }
 eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "x11", "wayland"] }
 rfd = "0.17"
 

@@ -8,3 +8,5 @@ pub use images::*;
 
 mod folders;
 pub use folders::*;
+mod catalog;
+pub use catalog::*;

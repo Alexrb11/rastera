@@ -1,5 +1,13 @@
 # Arquitectura de Rastera
 
+## Implementación actual del catálogo
+
+SQLite se abre y utiliza exclusivamente en un trabajador con colas de 32 mensajes. El cierre drena las escrituras aceptadas. Se guarda en el directorio de datos de usuario: en Windows, %LOCALAPPDATA%\Rastera\catalog.sqlite. Las claves de ruta usan UTF-16 sin pérdida en Windows y bytes en Unix; el texto visible no identifica los archivos.
+
+El esquema v1 almacena favoritos, hasta 32 etiquetas y dimensiones/formato de las imágenes abiertas. Las anotaciones de la carpeta (máximo 10.000 rutas) se consultan fuera del hilo gráfico. La búsqueda por nombre/etiqueta y los filtros de favoritos/formato operan sobre la carpeta abierta y se recalculan al cambiar sus datos. No es todavía una búsqueda global del catálogo.
+
+La versión del esquema se comprueba antes de escribir. Una base de una versión más reciente se rechaza; antes de migrar una base existente se crea una copia mediante la API de backup de SQLite, y la migración es transaccional. Los errores permiten seguir usando el visor y la cuadrícula. La observación de archivos, la reconciliación automática y el seguimiento de renombrados siguen pendientes: Actualizar vuelve a leer la carpeta, y una ruta nueva tiene identidad distinta.
+
 Estado: diseño inicial para implementar. Fecha: 10 de octubre de 2026.
 
 Rastera será una aplicación de escritorio para visualizar, organizar y transformar imágenes locales. La arquitectura separa el hilo de interfaz del acceso a archivos, la decodificación y los lotes. Todas las tareas que puedan acumular imágenes deberán pasar por un planificador con límites de cola, concurrencia y memoria.

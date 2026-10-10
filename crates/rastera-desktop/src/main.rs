@@ -1,4 +1,5 @@
 mod app;
+mod catalog;
 mod grid;
 
 fn main() -> eframe::Result {

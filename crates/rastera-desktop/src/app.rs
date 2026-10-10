@@ -16,6 +16,8 @@ struct Preview {
 }
 
 pub struct RasteraApp {
+    catalog: crate::catalog::Catalog,
+    metadata_dirty: bool,
     grid: crate::grid::ThumbnailGrid,
     grid_view: bool,
     loader: ImageLoader,
@@ -56,6 +58,8 @@ impl RasteraApp {
             Arc::new(move || ctx.request_repaint()),
         );
         let mut app = Self {
+            catalog: crate::catalog::Catalog::new(&cc.egui_ctx),
+            metadata_dirty: false,
             grid,
             grid_view: false,
             loader,
@@ -85,9 +89,12 @@ impl RasteraApp {
     }
 
     fn open(&mut self, path: PathBuf) {
+        let path = std::path::absolute(&path).unwrap_or(path);
         self.grid.reset();
         self.grid_view = true;
         self.folder_generation += 1;
+        self.catalog.reset(self.folder_generation);
+        self.metadata_dirty = false;
         self.generation += 1;
         self.loader.cancel();
         self.preview = None;
@@ -142,6 +149,7 @@ impl RasteraApp {
     }
 
     fn receive(&mut self, ctx: &egui::Context) {
+        self.catalog.receive();
         self.grid.receive(ctx);
         if let Some(receiver) = &self.dialog {
             match receiver.try_recv() {
@@ -168,6 +176,7 @@ impl RasteraApp {
                     self.open_image(path);
                 }
                 FolderUpdate::Page(page) => {
+                    self.catalog.invalidate();
                     let first = if self.entries.is_empty() && self.path.is_none() {
                         page.first().map(|entry| entry.path.clone())
                     } else {
@@ -179,9 +188,19 @@ impl RasteraApp {
                     }
                 }
                 FolderUpdate::Sorted(entries) => {
+                    self.catalog.invalidate();
                     self.entries = entries;
                 }
                 FolderUpdate::Finished(result) => {
+                    let paths = if self.entries.is_empty() {
+                        self.path.iter().cloned().collect()
+                    } else {
+                        self.entries
+                            .iter()
+                            .map(|entry| entry.path.clone())
+                            .collect()
+                    };
+                    self.catalog.load(paths);
                     self.folder_loading = false;
                     if let Err(error) = result
                         && error.kind != ErrorKind::Cancelled
@@ -201,6 +220,7 @@ impl RasteraApp {
             self.loading = false;
             match event.result {
                 Ok(image) => {
+                    self.metadata_dirty = true;
                     let size = egui::vec2(image.width as f32, image.height as f32);
                     let pixels = egui::ColorImage::from_rgba_unmultiplied(
                         [image.width as usize, image.height as usize],
@@ -221,6 +241,13 @@ impl RasteraApp {
                     self.error = Some(error.to_string());
                 }
             }
+        }
+        if self.metadata_dirty
+            && self.catalog.ready
+            && let (Some(path), Some(preview)) = (&self.path, &self.preview)
+        {
+            self.catalog.save_metadata(path, &preview.info);
+            self.metadata_dirty = false;
         }
     }
 
@@ -341,6 +368,13 @@ impl RasteraApp {
                     {
                         self.open(folder);
                     }
+                }
+                if self.folder.is_none()
+                    && ui
+                        .add_enabled(self.catalog.ready, egui::Button::new("Organizar"))
+                        .clicked()
+                {
+                    self.catalog.editor_open = true;
                 }
             });
         });
@@ -616,9 +650,11 @@ impl eframe::App for RasteraApp {
                 Layout::top_down(Align::Min),
                 |ui| {
                     if self.grid_view && !self.entries.is_empty() {
-                        if let Some(path) = self.grid.show(ui, &self.entries, self.loading) {
+                        self.catalog.filters(ui, &self.entries);
+                        if let Some(path) = self.grid.show(ui, &self.catalog.filtered, self.loading)
+                        {
                             self.open_image(path);
-                            self.grid_view = false;
+                            self.grid_view = !self.grid.open_viewer;
                         }
                     } else {
                         self.viewer(ui);
@@ -626,6 +662,14 @@ impl eframe::App for RasteraApp {
                 },
             );
         });
+        self.catalog.editor(
+            &ctx,
+            self.path.as_deref(),
+            self.preview.as_ref().map(|preview| &preview.info),
+        );
+        if let Some(error) = &self.catalog.error {
+            ui.colored_label(Color32::LIGHT_RED, error);
+        }
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(if self.loading || self.folder_loading || self.grid.busy() {

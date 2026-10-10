@@ -22,6 +22,7 @@ pub struct ThumbnailGrid {
     generation: u64,
     clock: u64,
     pub selected: HashSet<PathBuf>,
+    pub open_viewer: bool,
 }
 
 impl ThumbnailGrid {
@@ -38,6 +39,7 @@ impl ThumbnailGrid {
             generation: 0,
             clock: 0,
             selected: HashSet::new(),
+            open_viewer: false,
         }
     }
 
@@ -103,6 +105,7 @@ impl ThumbnailGrid {
         preview_loading: bool,
     ) -> Option<PathBuf> {
         let mut opened = None;
+        self.open_viewer = false;
         ui.horizontal(|ui| {
             ui.heading("Biblioteca");
             ui.label(format!(
@@ -215,6 +218,7 @@ impl ThumbnailGrid {
                                         Color32::WHITE,
                                     );
                                 if response.clicked() {
+                                    opened = Some(path.clone());
                                     if !ui.input(|input| input.modifiers.command) {
                                         self.selected.clear();
                                     }
@@ -223,6 +227,7 @@ impl ThumbnailGrid {
                                     }
                                 }
                                 if response.double_clicked() {
+                                    self.open_viewer = true;
                                     opened = Some(path.clone());
                                 }
                             }
