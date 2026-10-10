@@ -2420,6 +2420,7 @@ dependencies = [
  "rastera-core",
  "rastera-engine",
  "rfd",
+ "tempfile",
 ]
 
 [[package]]

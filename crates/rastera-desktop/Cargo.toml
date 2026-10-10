@@ -20,6 +20,10 @@ image = { workspace = true, optional = true }
 [features]
 capture = ["dep:image"]
 
+[dev-dependencies]
+tempfile.workspace = true
+image.workspace = true
+
 [lints]
 workspace = true
 

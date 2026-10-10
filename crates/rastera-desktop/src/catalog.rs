@@ -3,7 +3,7 @@ use rastera_adapters::{SqliteCatalog, catalog_path};
 use rastera_core::{Annotation, ErrorKind, FolderEntry, ImageInfo, RasteraError, normalize_tags};
 use rastera_engine::{CatalogCommand, CatalogWorker};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -14,6 +14,7 @@ pub struct Catalog {
     pub ready: bool,
     pub error: Option<String>,
     annotations: HashMap<PathBuf, Annotation>,
+    pending: HashSet<PathBuf>,
     search: String,
     favorites: bool,
     format: String,
@@ -41,12 +42,16 @@ impl Catalog {
             },
             Arc::new(move || ctx.request_repaint()),
         );
+        Self::with_worker(worker)
+    }
+    fn with_worker(worker: CatalogWorker) -> Self {
         Self {
             worker,
             generation: 0,
             ready: false,
             error: None,
             annotations: HashMap::new(),
+            pending: HashSet::new(),
             search: String::new(),
             favorites: false,
             format: String::new(),
@@ -63,9 +68,11 @@ impl Catalog {
         self.ready = false;
         self.error = None;
         self.annotations.clear();
+        self.pending.clear();
         self.filtered.clear();
         self.dirty = true;
         self.editor_path = None;
+        self.editor_open = false;
     }
     pub fn invalidate(&mut self) {
         self.dirty = true;
@@ -87,7 +94,15 @@ impl Catalog {
                 Ok(records) => {
                     self.ready = true;
                     self.error = None;
-                    self.annotations.extend(records);
+                    for (path, annotation) in records {
+                        if self.pending.contains(&path) {
+                            if self.annotations.get(&path) == Some(&annotation) {
+                                self.pending.remove(&path);
+                            }
+                        } else {
+                            self.annotations.insert(path, annotation);
+                        }
+                    }
                     if !self.editor_open {
                         self.editor_path = None;
                     }
@@ -109,11 +124,15 @@ impl Catalog {
     fn save(&mut self, path: PathBuf, annotation: Annotation, info: Option<ImageInfo>) {
         if let Err(error) = self.worker.request(CatalogCommand::Save {
             generation: self.generation,
-            path,
-            annotation,
+            path: path.clone(),
+            annotation: annotation.clone(),
             info,
         }) {
             self.error = Some(error.to_string());
+        } else {
+            self.pending.insert(path.clone());
+            self.annotations.insert(path, annotation);
+            self.dirty = true;
         }
     }
 
@@ -239,5 +258,56 @@ impl Catalog {
                 }
             });
         self.editor_open = open;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rastera_core::{CatalogBackend, FileStamp, ImageKind};
+    #[test]
+    fn metadata_updates_preserve_accepted_edits_and_close_flushes_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("catalog.sqlite");
+        let worker_path = db_path.clone();
+        let worker = CatalogWorker::new(
+            move || Ok(Box::new(SqliteCatalog::open(&worker_path)?)),
+            Arc::new(|| {}),
+        );
+        let path = dir.path().join("image.png");
+        let mut catalog = Catalog::with_worker(worker);
+        catalog.reset(1);
+        catalog.load(vec![path.clone()]);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !catalog.ready {
+            catalog.receive();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let annotation = Annotation {
+            favorite: true,
+            tags: vec!["Viajes".into()],
+            ..Default::default()
+        };
+        catalog.save(path.clone(), annotation, None);
+        let info = ImageInfo {
+            width: 90,
+            height: 60,
+            kind: ImageKind::Png,
+            stamp: FileStamp {
+                length: 200,
+                modified: None,
+            },
+            has_color_profile: false,
+        };
+        // A decode can finish while the annotation write is still awaiting acknowledgment.
+        catalog.save_metadata(&path, &info);
+        assert!(catalog.annotations[&path].favorite);
+        drop(catalog);
+        let mut db = SqliteCatalog::open(&db_path).unwrap();
+        let saved = db.load(&[path]).unwrap().remove(0).1;
+        assert!(saved.favorite);
+        assert_eq!(saved.tags, ["Viajes"]);
+        assert_eq!((saved.width, saved.height), (Some(90), Some(60)));
     }
 }
