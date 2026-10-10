@@ -8,7 +8,11 @@ Un clic selecciona una imagen y actualiza sus detalles. Ctrl+clic añade o retir
 
 La selección se mantiene al cambiar filtros; el contador incluye imágenes seleccionadas que hayan quedado ocultas. El plan de exportación permite revisar la selección completa.
 
-Doble clic abre el visor. Usa Cuadrícula para volver, las flechas para navegar, la rueda para ampliar, el arrastre para desplazar y Home para ajustar. El zoom trabaja sobre una vista previa de hasta 4.096 píxeles; la exportación usa el original.
+Doble clic abre el visor. Usa Cuadrícula para volver, las flechas para navegar, la rueda para ampliar, el arrastre para desplazar y Home para ajustar. Se muestra primero una vista previa de hasta 4.096 píxeles. Al ampliar por encima de su detalle, se vuelve a decodificar el original en un trabajador y se conservan sus píxeles normalizados por EXIF y color.
+
+100% representa un píxel de imagen por píxel físico de pantalla, también con escalado de Windows. El zoom con rueda mantiene el punto bajo el cursor. Mientras se carga el detalle o si este falla, se conserva la vista previa; el inspector muestra el estado. La carga completa respeta los límites y el presupuesto compartido, por lo que algunas imágenes se rechazan por memoria. Se comprueba tamaño/fecha respecto a la vista inicial; no se detectan cambios que conserven ambos.
+
+La GPU recibe solo mosaicos visibles, con un máximo de 60 entradas de 512 píxeles más bordes de muestreo. Si una ventana necesita más mosaicos, las regiones restantes usan la vista previa. Ajustar, Home, doble clic para ajustar, Cuadrícula, navegar o iniciar un lote liberan el detalle completo. Durante un lote se conserva la vista previa para dejar memoria al procesador.
 
 Actualizar vuelve a leer la carpeta y limpia las texturas y la selección. Las miniaturas persistentes se invalidan por ruta, tamaño, fecha de modificación, resolución y versión del procesamiento. Esta señal detecta cambios habituales, pero no modificaciones que conserven tamaño y fecha.
 

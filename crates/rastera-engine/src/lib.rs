@@ -6,7 +6,7 @@ pub mod memory;
 pub use catalog::{CatalogCommand, CatalogEvent, CatalogWorker};
 mod batch;
 pub use batch::{BatchEvent, BatchUpdate, BatchWorker};
-pub use loader::{ImageLoader, LoadedImage};
+pub use loader::{ImageLoader, LoadedImage, ResidentImage};
 
 mod folders;
 pub use folders::{FolderEvent, FolderScanner, FolderUpdate};

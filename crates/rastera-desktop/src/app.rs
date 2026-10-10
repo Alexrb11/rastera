@@ -12,10 +12,12 @@ const MUTED: Color32 = Color32::from_rgb(150, 165, 180);
 struct Preview {
     texture: TextureHandle,
     size: Vec2,
+    source_size: Vec2,
     info: ImageInfo,
 }
 
 pub struct RasteraApp {
+    detail: crate::detail::DetailView,
     batch: crate::batch::Batch,
     budget: MemoryBudget,
     catalog: crate::catalog::Catalog,
@@ -60,6 +62,7 @@ impl RasteraApp {
             Arc::new(move || ctx.request_repaint()),
         );
         let mut app = Self {
+            detail: crate::detail::DetailView::new(&cc.egui_ctx, budget.clone()),
             batch: crate::batch::Batch::new(&cc.egui_ctx, budget.clone()),
             budget,
             catalog: crate::catalog::Catalog::new(&cc.egui_ctx),
@@ -93,6 +96,7 @@ impl RasteraApp {
     }
 
     fn open(&mut self, path: PathBuf) {
+        self.detail.clear();
         let path = std::path::absolute(&path).unwrap_or(path);
         self.grid.reset();
         self.grid_view = true;
@@ -115,6 +119,7 @@ impl RasteraApp {
     }
 
     fn open_image(&mut self, path: PathBuf) {
+        self.detail.clear();
         self.budget.set_foreground_loading(true);
         self.generation += 1;
         self.path_input = path.to_string_lossy().into_owned();
@@ -156,6 +161,10 @@ impl RasteraApp {
 
     fn receive(&mut self, ctx: &egui::Context) {
         self.batch.receive();
+        if (self.batch.busy || self.grid_view) && self.detail.active() {
+            self.detail.clear();
+        }
+        self.detail.receive();
         self.catalog.receive();
         self.grid.receive(ctx);
         if let Some(receiver) = &self.dialog {
@@ -252,6 +261,10 @@ impl RasteraApp {
                         &image.rgba,
                     );
                     self.preview = Some(Preview {
+                        source_size: egui::vec2(
+                            image.source_size.0 as f32,
+                            image.source_size.1 as f32,
+                        ),
                         texture: ctx.load_texture(
                             format!("preview-{}", self.generation),
                             pixels,
@@ -266,6 +279,11 @@ impl RasteraApp {
                     self.error = Some(error.to_string());
                 }
             }
+        }
+        #[cfg(feature = "capture")]
+        if self.preview.is_some() && std::env::var_os("RASTERA_CAPTURE_FULL").is_some() {
+            self.grid_view = false;
+            self.zoom = Some(1.0);
         }
         if self.metadata_dirty
             && self.catalog.ready
@@ -366,9 +384,13 @@ impl RasteraApp {
             && !self.folder_loading
             && !self.grid.busy()
             && !self.batch.busy
+            && !self.detail.busy()
         {
             self.capture_requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+        }
+        if self.capture_requested {
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
     }
 
@@ -479,11 +501,16 @@ impl RasteraApp {
                 ui.add_space(8.0);
                 ui.label(RichText::new("Perfil ICC convertido a sRGB.").color(MUTED));
             }
+            if let Some(error) = &self.detail.error {
+                ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+            } else if self.detail.ready() {
+                ui.label(RichText::new("Detalle completo cargado").color(ACCENT));
+            }
             if preview.size.x as u32 != preview.info.width
                 || preview.size.y as u32 != preview.info.height
             {
                 ui.add_space(8.0);
-                ui.label(RichText::new("Puede incluir orientación EXIF o una vista reducida. Zoom sobre la vista previa.").color(MUTED));
+                ui.label(RichText::new("Vista inicial reducida u orientada. Al ampliar se carga el detalle completo.").color(MUTED));
             }
         }
         if let Some(folder) = &self.folder {
@@ -575,7 +602,7 @@ impl RasteraApp {
             }
             ui.label(self.zoom.map_or_else(
                 || "Ajuste a ventana".to_owned(),
-                |zoom| format!("{:.0}% de la vista previa", zoom * 100.0),
+                |zoom| format!("{:.0}%", zoom * 100.0),
             ));
         });
         ui.add_space(8.0);
@@ -583,14 +610,20 @@ impl RasteraApp {
         let painter = ui.painter().with_clip_rect(canvas);
         painter.rect_filled(canvas, 8.0, Color32::from_rgb(16, 22, 29));
         if let Some(preview) = &self.preview {
-            let fit = ((canvas.width() - 32.0) / preview.size.x)
-                .min((canvas.height() - 32.0) / preview.size.y)
+            let pixels_per_point = ui.ctx().pixels_per_point();
+            let fit = (((canvas.width() - 32.0) / preview.source_size.x)
+                .min((canvas.height() - 32.0) / preview.source_size.y)
+                * pixels_per_point)
                 .clamp(0.001, 1.0);
             if response.hovered() {
                 let scroll = ui.input(|input| input.smooth_scroll_delta.y);
                 if scroll != 0.0 {
-                    self.zoom =
-                        Some((self.zoom.unwrap_or(fit) * (scroll * 0.003).exp()).clamp(0.05, 16.0));
+                    let old = self.zoom.unwrap_or(fit);
+                    let new = (old * (scroll * 0.003).exp()).clamp(0.001, 16.0);
+                    if let Some(pointer) = response.hover_pos() {
+                        self.pan = anchored_pan(canvas.center(), self.pan, pointer, new / old);
+                    }
+                    self.zoom = Some(new);
                 }
             }
             if response.dragged() {
@@ -600,7 +633,18 @@ impl RasteraApp {
                 self.zoom = None;
                 self.pan = Vec2::ZERO;
             }
-            let size = preview.size * self.zoom.unwrap_or(fit);
+            if self.zoom.is_none() && self.detail.active() {
+                self.detail.clear();
+            }
+            let preview_ratio = preview.size.x / preview.source_size.x;
+            let needs_detail = self.zoom.unwrap_or(fit) > preview_ratio && preview_ratio < 1.0;
+            if needs_detail
+                && !self.batch.busy
+                && let Some(path) = &self.path
+            {
+                self.detail.request(path.clone(), &preview.info);
+            }
+            let size = preview.source_size * (self.zoom.unwrap_or(fit) / pixels_per_point);
             self.current_scale = self.zoom.unwrap_or(fit);
             let image_rect = Rect::from_center_size(canvas.center() + self.pan, size);
             // Checkerboard only in the visible image area.
@@ -624,12 +668,26 @@ impl RasteraApp {
                     );
                 }
             }
-            painter.image(
-                preview.texture.id(),
-                image_rect,
-                Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                Color32::WHITE,
-            );
+            if needs_detail && self.detail.ready() {
+                self.detail
+                    .paint(ui.ctx(), &painter, image_rect, canvas, &preview.texture);
+            } else {
+                painter.image(
+                    preview.texture.id(),
+                    image_rect,
+                    Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+            }
+            if self.detail.busy() {
+                painter.text(
+                    canvas.min + egui::vec2(16.0, 16.0),
+                    egui::Align2::LEFT_TOP,
+                    "Cargando detalle…",
+                    egui::FontId::proportional(14.0),
+                    Color32::WHITE,
+                );
+            }
         } else {
             let message = if self.loading || self.folder_loading {
                 "Cargando imagen…"
@@ -671,7 +729,9 @@ impl RasteraApp {
         }
     }
 }
-
+fn anchored_pan(center: egui::Pos2, pan: Vec2, pointer: egui::Pos2, ratio: f32) -> Vec2 {
+    pointer - center - (pointer - (center + pan)) * ratio
+}
 impl eframe::App for RasteraApp {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -741,5 +801,19 @@ impl eframe::App for RasteraApp {
         });
         #[cfg(feature = "capture")]
         self.capture(&ctx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn zoom_keeps_the_source_point_under_the_cursor() {
+        let center = egui::pos2(400.0, 300.0);
+        let pan = egui::vec2(30.0, -20.0);
+        let cursor = egui::pos2(250.0, 140.0);
+        let source_point = cursor - (center + pan);
+        let updated = anchored_pan(center, pan, cursor, 2.5);
+        assert_eq!(center + updated + source_point * 2.5, cursor);
     }
 }

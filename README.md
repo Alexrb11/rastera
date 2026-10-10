@@ -58,6 +58,6 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-targets --all-features --locked
 ```
 
-La primera compilación descargará dependencias y tardará más que las siguientes. El visor limita la vista previa a 4.096 píxeles por lado. El zoom se aplica sobre esa vista; la carga completa bajo demanda y la conversión al perfil del monitor siguen pendientes. Los límites iniciales son 128 MiB por archivo, 64 millones de píxeles y un presupuesto compartido de buffers de 512 MiB. Una imagen puede rechazarse por memoria aunque cumpla el límite de píxeles. Este presupuesto no equivale a la memoria total del proceso.
+La primera compilación descargará dependencias y tardará más que las siguientes. El visor muestra primero una vista previa de hasta 4.096 píxeles y carga resolución completa al ampliar, con mosaicos visibles y memoria acotada. 100% corresponde a píxeles físicos de pantalla. La conversión al perfil del monitor sigue pendiente. Los límites iniciales son 128 MiB por archivo, 64 millones de píxeles y un presupuesto compartido de buffers de 512 MiB. Una imagen puede rechazarse por memoria aunque cumpla el límite de píxeles. Este presupuesto no equivale a la memoria total del proceso.
 
 La característica opcional `capture` permite una comprobación visual del renderizado real: con `RASTERA_CAPTURE_TO` apuntando a un PNG, la aplicación guarda una captura cuando termina la carga y se cierra. Es una herramienta de desarrollo, deshabilitada por defecto.

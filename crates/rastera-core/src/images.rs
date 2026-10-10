@@ -125,6 +125,8 @@ impl ImageInfo {
 
 #[derive(Debug)]
 pub struct DecodedImage {
+    /// Dimensions after EXIF normalization, before preview reduction.
+    pub source_size: (u32, u32),
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
@@ -132,6 +134,17 @@ pub struct DecodedImage {
 }
 
 pub trait ImageBackend: Send + Sync + 'static {
+    fn decode_original(
+        &self,
+        _path: &Path,
+        _info: &ImageInfo,
+        _cancel: &CancellationToken,
+    ) -> Result<DecodedImage> {
+        Err(RasteraError::new(
+            ErrorKind::Unsupported,
+            "Este backend no admite resolución completa",
+        ))
+    }
     fn inspect(&self, path: &Path) -> Result<ImageInfo>;
     fn decode(
         &self,

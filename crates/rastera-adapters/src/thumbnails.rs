@@ -20,8 +20,8 @@ use std::{
     },
 };
 
-const MAGIC: &[u8; 8] = b"RASTH001";
-const MAX_RECORD: u64 = 256 * 256 * 4 + 65_536 + 32;
+const MAGIC: &[u8; 8] = b"RASTH002";
+const MAX_RECORD: u64 = 256 * 256 * 4 + 65_536 + 40;
 const DISK_BUDGET: u64 = 2 * 1024 * 1024 * 1024;
 
 pub struct CachedThumbnails {
@@ -50,7 +50,7 @@ impl CachedThumbnails {
     }
     fn key(path: &Path, info: &ImageInfo, edge: u32) -> Vec<u8> {
         let mut key = path_key(path);
-        key.extend(format!("|{:?}|{edge}|pipeline-2-srgb", info.stamp).bytes());
+        key.extend(format!("|{:?}|{edge}|pipeline-3-source-size", info.stamp).bytes());
         key
     }
     fn hash(bytes: &[u8]) -> u64 {
@@ -61,7 +61,7 @@ impl CachedThumbnails {
     }
     fn read(path: &Path, key: &[u8], info: &ImageInfo, edge: u32) -> Option<DecodedImage> {
         let length = fs::metadata(path).ok()?.len();
-        if !(32..=MAX_RECORD).contains(&length) {
+        if !(36..=MAX_RECORD).contains(&length) {
             return None;
         }
         let bytes = fs::read(path).ok()?;
@@ -77,14 +77,18 @@ impl CachedThumbnails {
         let width = word(12)?;
         let height = word(16)?;
         let stored_hash = u64::from_le_bytes(bytes.get(20..28)?.try_into().ok()?);
+        let source_size = (word(28)?, word(32)?);
+        if source_size != (info.width, info.height) && source_size != (info.height, info.width) {
+            return None;
+        }
         if width == 0 || height == 0 || width.max(height) > edge {
             return None;
         }
         let pixels = (width as usize)
             .checked_mul(height as usize)?
             .checked_mul(4)?;
-        let end = 28usize.checked_add(key_len)?;
-        if bytes.get(28..end)? != key || bytes.len().checked_sub(end)? != pixels {
+        let end = 36usize.checked_add(key_len)?;
+        if bytes.get(36..end)? != key || bytes.len().checked_sub(end)? != pixels {
             return None;
         }
         let rgba = bytes.get(end..)?;
@@ -92,6 +96,7 @@ impl CachedThumbnails {
             return None;
         }
         Some(DecodedImage {
+            source_size,
             width,
             height,
             rgba: rgba.to_vec(),
@@ -111,6 +116,8 @@ impl CachedThumbnails {
         temp.write_all(&image.width.to_le_bytes())?;
         temp.write_all(&image.height.to_le_bytes())?;
         temp.write_all(&Self::hash(&image.rgba).to_le_bytes())?;
+        temp.write_all(&image.source_size.0.to_le_bytes())?;
+        temp.write_all(&image.source_size.1.to_le_bytes())?;
         temp.write_all(key)?;
         temp.write_all(&image.rgba)?;
         temp.flush()?;

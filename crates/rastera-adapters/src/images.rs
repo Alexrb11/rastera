@@ -123,13 +123,32 @@ impl ImageBackend for LocalImages {
         max_edge: u32,
         cancel: &CancellationToken,
     ) -> Result<DecodedImage> {
-        cancel.check()?;
         if max_edge == 0 || max_edge > 4_096 {
             return Err(RasteraError::new(
                 ErrorKind::TooLarge,
                 "Tamaño de previsualización fuera de rango",
             ));
         }
+        self.decode_size(path, expected, Some(max_edge), cancel)
+    }
+    fn decode_original(
+        &self,
+        path: &Path,
+        info: &ImageInfo,
+        cancel: &CancellationToken,
+    ) -> Result<DecodedImage> {
+        self.decode_size(path, info, None, cancel)
+    }
+}
+impl LocalImages {
+    fn decode_size(
+        &self,
+        path: &Path,
+        expected: &ImageInfo,
+        max_edge: Option<u32>,
+        cancel: &CancellationToken,
+    ) -> Result<DecodedImage> {
+        cancel.check()?;
         let (info, mut decoder) = decoder(path)?;
         if info.stamp != expected.stamp {
             return Err(RasteraError::new(
@@ -143,7 +162,10 @@ impl ImageBackend for LocalImages {
         cancel.check()?;
         image = crate::color::convert(image, profile.as_ref(), cancel)?;
         image.apply_orientation(orientation);
-        if image.width() > max_edge || image.height() > max_edge {
+        let source_size = (image.width(), image.height());
+        if let Some(max_edge) = max_edge
+            && (image.width() > max_edge || image.height() > max_edge)
+        {
             image = image.thumbnail(max_edge, max_edge);
         }
         cancel.check()?;
@@ -155,6 +177,7 @@ impl ImageBackend for LocalImages {
             ));
         }
         Ok(DecodedImage {
+            source_size,
             width: rgba.width(),
             height: rgba.height(),
             rgba: rgba.into_raw(),
@@ -215,6 +238,42 @@ mod tests {
             .decode(&path, &info, 100, &CancellationToken::default())
             .unwrap();
         assert_eq!((result.width, result.height), (2, 3));
+        assert_eq!(result.source_size, (2, 3));
+        let full = LocalImages
+            .decode_original(&path, &info, &Default::default())
+            .unwrap();
+        assert_eq!((full.width, full.height), (2, 3));
+    }
+    #[test]
+    fn original_load_preserves_pixels_beyond_preview_size_and_supports_cancellation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wide.png");
+        let mut image = image::RgbaImage::from_pixel(9000, 2, image::Rgba([80, 90, 100, 128]));
+        image.put_pixel(8500, 1, image::Rgba([1, 2, 3, 4]));
+        image.save(&path).unwrap();
+        let info = LocalImages.inspect(&path).unwrap();
+        let preview = LocalImages
+            .decode(&path, &info, 4096, &Default::default())
+            .unwrap();
+        assert_eq!(preview.source_size, (9000, 2));
+        assert_eq!(preview.width, 4096);
+        let full = LocalImages
+            .decode_original(&path, &info, &Default::default())
+            .unwrap();
+        assert_eq!((full.width, full.height), (9000, 2));
+        assert_eq!(
+            &full.rgba[((9000 + 8500) * 4)..((9000 + 8500) * 4 + 4)],
+            &[1, 2, 3, 4]
+        );
+        let cancel = CancellationToken::default();
+        cancel.cancel();
+        assert_eq!(
+            LocalImages
+                .decode_original(&path, &info, &cancel)
+                .unwrap_err()
+                .kind,
+            ErrorKind::Cancelled
+        );
     }
 
     #[test]

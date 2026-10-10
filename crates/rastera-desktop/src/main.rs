@@ -1,6 +1,7 @@
 mod app;
 mod batch;
 mod catalog;
+mod detail;
 mod grid;
 
 fn main() -> eframe::Result {
