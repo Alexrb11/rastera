@@ -12,7 +12,7 @@ El plan de exportación valida entradas, orientación, dimensiones finales, nomb
 
 Cada lote mantiene un diario SQLite independiente en el destino con intención, temporales y estados pending, encoding, ready, published, error y cancelled. Las salidas se sincronizan y se publican sin reemplazo mediante tempfile::persist_noclobber. Las colisiones que aparecen después del plan también fallan sin sobrescribir. Los errores individuales continúan; un error del diario detiene el lote. Una publicación cuya confirmación falla se comunica como publicada y pendiente de revisión.
 
-La recuperación automática, los hashes de identidad, la reanudación y las mediciones de rendimiento siguen pendientes. Tamaño y fecha de modificación detectan cambios habituales, sin demostrar igualdad de contenido. No se promete atomicidad del lote ni persistencia ante una pérdida de alimentación.
+Implementado: diarios de versión 2 con receta estructurada, rutas sin pérdida y huellas BLAKE3 del original y la salida. El plan calcula la huella del original y la ejecución la vuelve a comprobar antes de decodificar y publicar, además del tamaño/fecha. Una recuperación solicitada desde la interfaz verifica salidas ready/published y prepara únicamente las entradas ausentes con original comprobado. La lectura no modifica el diario ni borra temporales; la reanudación revisada crea otro diario y conserva conflictos. Un bloqueo de archivo del SO impide recuperar sesiones activas. Los diarios v1 y de otro sistema operativo se rechazan. Siguen pendientes el descubrimiento al iniciar y las mediciones de rendimiento. No se promete atomicidad del lote ni persistencia ante una pérdida de alimentación.
 
 ## Implementación actual del catálogo
 

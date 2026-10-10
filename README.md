@@ -22,7 +22,7 @@ Windows será la primera plataforma de desarrollo. La separación entre interfaz
 - Visor con zoom, desplazamiento, ajuste a ventana y navegación con teclado.
 - Catálogo local con favoritos, etiquetas y búsqueda por nombre y metadatos básicos.
 - Conversión, redimensionado y rotación de imágenes por lotes.
-- Revisión de nombres y dimensiones del lote, progreso, cancelación y resultados por archivo.
+- Revisión de nombres y dimensiones del lote, progreso, cancelación, resultados y recuperación de pendientes con huellas verificadas.
 - Renombrado por lotes en una fase posterior, con registro de operaciones y recuperación.
 
 El primer alcance cubrirá JPEG, PNG y WebP estáticos. La compatibilidad se comprobará mediante archivos de prueba; otros formatos y la gestión avanzada de color se incorporarán por separado.

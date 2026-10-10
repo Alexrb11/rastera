@@ -44,7 +44,7 @@ Criterios de aceptación:
 
 ## Fase 4 Exportación por lotes
 
-Implementado: recetas PNG/JPEG/WebP, orientación y rotación, redimensionado desde el original, plan de nombres/dimensiones, progreso, errores por archivo, cancelación y diario persistente. Hay pruebas de colisiones, color no compatible, resolución completa y publicación seguida de fallo del diario. Pendiente: recuperación automática tras interrupción, reanudación, validación en otros volúmenes y mediciones durante lotes grandes.
+Implementado: recetas PNG/JPEG/WebP, orientación y rotación, redimensionado desde el original, plan de nombres/dimensiones, progreso, errores por archivo, cancelación y diario persistente. La recuperación revisada comprueba huellas y reanuda los pendientes en otro diario, conservando conflictos. Hay pruebas de colisiones, color no compatible, resolución completa, bloqueo de sesiones activas, cambios sin alterar tamaño/fecha y publicación seguida de fallo del diario. Pendiente: descubrimiento de diarios al iniciar, validación en otros volúmenes y mediciones durante lotes grandes.
 
 Implementar recetas de redimensionado, rotación y conversión. Añadir previsualización del plan, progreso por ítem, cancelación y diario de recuperación. Las salidas se escriben en una carpeta distinta y sin sobrescribir originales.
 

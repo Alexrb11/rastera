@@ -1,7 +1,8 @@
 use crate::memory::MemoryBudget;
 use crossbeam_channel::{Receiver, Sender, bounded};
 use rastera_core::{
-    BatchBackend, CancellationToken, ErrorKind, ExportPlan, ExportRecipe, RasteraError, Result,
+    BatchBackend, CancellationToken, ErrorKind, ExportPlan, ExportRecipe, RasteraError,
+    RecoveryReport, Result,
 };
 use std::{
     path::PathBuf,
@@ -10,6 +11,11 @@ use std::{
 };
 
 enum Command {
+    Recover {
+        generation: u64,
+        journal: PathBuf,
+        cancel: CancellationToken,
+    },
     Plan {
         generation: u64,
         paths: Vec<PathBuf>,
@@ -24,6 +30,7 @@ enum Command {
     },
 }
 pub enum BatchUpdate {
+    Recovered(Result<RecoveryReport>),
     Planned(Result<ExportPlan>),
     Started(PathBuf),
     Item { index: usize, result: Result<()> },
@@ -55,6 +62,24 @@ impl BatchWorker {
                     sent
                 };
                 match command {
+                    Command::Recover {
+                        generation,
+                        journal,
+                        cancel,
+                    } => {
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            backend.recover(&journal, &cancel)
+                        }))
+                        .unwrap_or_else(|_| {
+                            Err(RasteraError::new(
+                                ErrorKind::Internal,
+                                "No se pudo recuperar el diario",
+                            ))
+                        });
+                        if !send(generation, BatchUpdate::Recovered(result)) {
+                            break;
+                        }
+                    }
                     Command::Plan {
                         generation,
                         paths,
@@ -192,6 +217,17 @@ impl BatchWorker {
             cancel,
         )
     }
+    pub fn recover(&mut self, generation: u64, journal: PathBuf) -> Result<()> {
+        let cancel = CancellationToken::default();
+        self.submit(
+            Command::Recover {
+                generation,
+                journal,
+                cancel: cancel.clone(),
+            },
+            cancel,
+        )
+    }
     pub fn cancel(&self) {
         self.cancel.cancel();
     }
@@ -292,6 +328,7 @@ mod tests {
             recipe: ExportRecipe::default(),
             items: (0..8)
                 .map(|index| ExportItem {
+                    source_hash: [0; 32],
                     source: format!("source-{index}").into(),
                     destination: format!("out-{index}").into(),
                     output_size: (1, 1),

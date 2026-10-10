@@ -5,17 +5,59 @@ use crate::{
 use image::{DynamicImage, ImageEncoder, metadata::Orientation};
 use rastera_core::{
     BatchBackend, CPU_IMAGE_BUDGET, CancellationToken, ErrorKind, ExportFormat, ExportItem,
-    ExportPlan, ExportRecipe, ExportSession, ImageInfo, ImageKind, RasteraError, Result,
+    ExportPlan, ExportRecipe, ExportSession, ImageInfo, ImageKind, RasteraError, RecoveryReport,
+    Result,
 };
 use rusqlite::{Connection, params};
 use std::{
     collections::HashSet,
     fs::{self, File},
-    io::{BufReader, BufWriter, Write},
+    io::{BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 
 pub struct LocalBatch;
+
+pub(crate) fn file_hash(path: &Path, cancel: &CancellationToken) -> Result<[u8; 32]> {
+    let mut file = File::open(path).map_err(io_error)?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        cancel.check()?;
+        let length = file.read(&mut buffer).map_err(io_error)?;
+        if length == 0 {
+            break;
+        }
+        total += length as u64;
+        if total > 128 * 1024 * 1024 {
+            return Err(RasteraError::new(
+                ErrorKind::TooLarge,
+                "El archivo supera 128 MiB",
+            ));
+        }
+        hasher.update(&buffer[..length]);
+    }
+    Ok(*hasher.finalize().as_bytes())
+}
+pub(crate) fn journal_lock(path: &Path) -> Result<File> {
+    let mut lock_name = path.as_os_str().to_os_string();
+    lock_name.push(".lock");
+    let lock = File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(PathBuf::from(lock_name))
+        .map_err(io_error)?;
+    lock.try_lock().map_err(|error| {
+        RasteraError::new(
+            ErrorKind::Busy,
+            format!("El diario está ocupado o no puede bloquearse: {error}"),
+        )
+    })?;
+    Ok(lock)
+}
 
 fn journal_error(error: rusqlite::Error) -> RasteraError {
     RasteraError::new(
@@ -71,6 +113,9 @@ fn ensure_export_color(
 }
 
 impl BatchBackend for LocalBatch {
+    fn recover(&self, journal: &Path, cancel: &CancellationToken) -> Result<RecoveryReport> {
+        crate::recovery::recover(journal, cancel)
+    }
     fn plan(
         &self,
         sources: &[PathBuf],
@@ -143,7 +188,15 @@ impl BatchBackend for LocalBatch {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(io_error(error)),
             }
+            let source_hash = file_hash(&source, cancel)?;
+            if stamp(fs::metadata(&source).map_err(io_error)?) != info.stamp {
+                return Err(RasteraError::new(
+                    ErrorKind::Changed,
+                    "El original cambió durante la revisión",
+                ));
+            }
             items.push(ExportItem {
+                source_hash,
                 source,
                 destination: output,
                 output_size: recipe.dimensions(width, height),
@@ -167,33 +220,51 @@ impl BatchBackend for LocalBatch {
             .tempfile_in(parent)
             .map_err(io_error)?;
         let (_, path) = journal.keep().map_err(|error| io_error(error.error))?;
+        let lock = journal_lock(&path)?;
         let mut db = Connection::open(&path).map_err(journal_error)?;
         db.execute_batch("PRAGMA synchronous=FULL;
-            CREATE TABLE batch(state TEXT NOT NULL, recipe TEXT NOT NULL);
+            CREATE TABLE batch(state TEXT NOT NULL, recipe TEXT NOT NULL,
+                platform TEXT NOT NULL, format TEXT NOT NULL, max_edge INTEGER,
+                rotation INTEGER NOT NULL, quality INTEGER NOT NULL, background BLOB NOT NULL);
             CREATE TABLE items(id INTEGER PRIMARY KEY, source BLOB NOT NULL, destination BLOB NOT NULL,
                 source_text TEXT NOT NULL, destination_text TEXT NOT NULL, temporary BLOB,
-                length INTEGER NOT NULL, modified TEXT, state TEXT NOT NULL, message TEXT NOT NULL DEFAULT '');
-            PRAGMA user_version=1;").map_err(journal_error)?;
+                length INTEGER NOT NULL, modified TEXT, state TEXT NOT NULL, message TEXT NOT NULL DEFAULT '',
+                source_hash BLOB NOT NULL, output_hash BLOB);
+            PRAGMA user_version=2;").map_err(journal_error)?;
         let tx = db.transaction().map_err(journal_error)?;
         tx.execute(
-            "INSERT INTO batch VALUES('running',?1)",
-            [format!("{:?}", plan.recipe)],
+            "INSERT INTO batch VALUES('running',?1,?2,?3,?4,?5,?6,?7)",
+            params![
+                format!("{:?}", plan.recipe),
+                if cfg!(windows) { "windows" } else { "unix" },
+                plan.recipe.format.extension(),
+                plan.recipe.max_edge,
+                plan.recipe.rotation,
+                plan.recipe.jpeg_quality,
+                plan.recipe.jpeg_background.as_slice()
+            ],
         )
         .map_err(journal_error)?;
         for (index, item) in plan.items.iter().enumerate() {
-            tx.execute("INSERT INTO items(id,source,destination,source_text,destination_text,length,modified,state) VALUES(?1,?2,?3,?4,?5,?6,?7,'pending')",
+            tx.execute("INSERT INTO items(id,source,destination,source_text,destination_text,length,modified,source_hash,state) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'pending')",
                 params![index as i64, path_key(&item.source), path_key(&item.destination),
                     item.source.to_string_lossy(), item.destination.to_string_lossy(),
-                    item.info.stamp.length as i64, format!("{:?}", item.info.stamp.modified)]).map_err(journal_error)?;
+                    item.info.stamp.length as i64, format!("{:?}", item.info.stamp.modified),
+                    item.source_hash.as_slice()]).map_err(journal_error)?;
         }
         tx.commit().map_err(journal_error)?;
-        Ok(Box::new(LocalExportSession { db, path }))
+        Ok(Box::new(LocalExportSession {
+            db,
+            path,
+            _lock: lock,
+        }))
     }
 }
 
 struct LocalExportSession {
     db: Connection,
     path: PathBuf,
+    _lock: File,
 }
 impl ExportSession for LocalExportSession {
     fn journal_path(&self) -> &Path {
@@ -212,6 +283,12 @@ impl ExportSession for LocalExportSession {
             return Err(RasteraError::new(
                 ErrorKind::Changed,
                 "El original cambió después de revisar el plan",
+            ));
+        }
+        if file_hash(&item.source, cancel)? != item.source_hash {
+            return Err(RasteraError::new(
+                ErrorKind::Changed,
+                "El contenido del original cambió después de revisar el plan",
             ));
         }
         let (info, mut decoder) = decoder(&item.source)?;
@@ -305,6 +382,19 @@ impl ExportSession for LocalExportSession {
                 "El original cambió durante la exportación",
             ));
         }
+        if file_hash(&item.source, cancel)? != item.source_hash {
+            return Err(RasteraError::new(
+                ErrorKind::Changed,
+                "El contenido del original cambió durante la exportación",
+            ));
+        }
+        let output_hash = file_hash(temporary.path(), cancel)?;
+        self.db
+            .execute(
+                "UPDATE items SET output_hash=?1 WHERE id=?2",
+                params![output_hash.as_slice(), index as i64],
+            )
+            .map_err(journal_error)?;
         self.record(index, "ready", "")?;
         temporary
             .persist_noclobber(&item.destination)

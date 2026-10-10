@@ -10,6 +10,7 @@ image.workspace = true
 rusqlite.workspace = true
 tempfile.workspace = true
 png = "0.18"
+blake3.workspace = true
 
 [lints]
 workspace = true

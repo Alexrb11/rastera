@@ -1,7 +1,7 @@
 use crossbeam_channel::{Receiver, bounded};
 use eframe::egui;
 use rastera_adapters::LocalBatch;
-use rastera_core::{ErrorKind, ExportFormat, ExportPlan, ExportRecipe};
+use rastera_core::{ErrorKind, ExportFormat, ExportPlan, ExportRecipe, RecoveryReport};
 use rastera_engine::{BatchUpdate, BatchWorker, memory::MemoryBudget};
 use std::{path::PathBuf, sync::Arc};
 
@@ -14,6 +14,8 @@ pub struct Batch {
     destination: String,
     destination_path: Option<PathBuf>,
     dialog: Option<Receiver<Option<PathBuf>>>,
+    recovery_dialog: bool,
+    recovery: Option<RecoveryReport>,
     recipe: ExportRecipe,
     resize: bool,
     edge: u32,
@@ -42,6 +44,8 @@ impl Batch {
             destination: String::new(),
             destination_path: None,
             dialog: None,
+            recovery_dialog: false,
+            recovery: None,
             recipe: ExportRecipe::default(),
             resize: true,
             edge: 1920,
@@ -65,6 +69,7 @@ impl Batch {
             return;
         }
         self.paths = paths;
+        self.recovery = None;
         self.plan = None;
         self.results.clear();
         self.completed = 0;
@@ -103,6 +108,10 @@ impl Batch {
                 Ok(path) => {
                     self.dialog = None;
                     if let Some(path) = path {
+                        if self.recovery_dialog {
+                            self.recover(path);
+                            return;
+                        }
                         self.destination = path.to_string_lossy().into_owned();
                         self.destination_path = Some(path);
                         self.plan = None;
@@ -117,6 +126,32 @@ impl Batch {
                 continue;
             }
             match event.update {
+                BatchUpdate::Recovered(result) => {
+                    self.busy = false;
+                    match result {
+                        Ok(report) => {
+                            self.recipe = report.pending.recipe.clone();
+                            self.resize = self.recipe.max_edge.is_some();
+                            self.edge = self.recipe.max_edge.unwrap_or(1920);
+                            self.paths = report
+                                .pending
+                                .items
+                                .iter()
+                                .map(|item| item.source.clone())
+                                .collect();
+                            if let Some(parent) = report.journal.parent() {
+                                self.destination = parent.to_string_lossy().into_owned();
+                                self.destination_path = Some(parent.to_path_buf());
+                            }
+                            self.plan =
+                                (!report.pending.items.is_empty()).then(|| report.pending.clone());
+                            self.journal = Some(report.journal.clone());
+                            self.recovery = Some(report);
+                            self.error = None;
+                        }
+                        Err(error) => self.error = Some(error.to_string()),
+                    }
+                }
                 BatchUpdate::Planned(result) => {
                     self.busy = false;
                     match result {
@@ -189,6 +224,42 @@ impl Batch {
             ctx.request_repaint();
         });
         self.dialog = Some(rx);
+        self.recovery_dialog = false;
+    }
+    fn recover(&mut self, path: PathBuf) {
+        if self.busy {
+            return;
+        }
+        self.generation += 1;
+        self.plan = None;
+        self.recovery = None;
+        self.results.clear();
+        self.completed = 0;
+        self.cancelled = false;
+        self.acknowledged = false;
+        self.error = None;
+        self.journal = None;
+        match self.worker.recover(self.generation, path) {
+            Ok(()) => self.busy = true,
+            Err(error) => self.error = Some(error.to_string()),
+        }
+    }
+    fn pick_journal(&mut self, ctx: &egui::Context) {
+        if self.dialog.is_some() || self.busy {
+            return;
+        }
+        let (tx, rx) = bounded(1);
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let selected = rfd::FileDialog::new()
+                .set_title("Recuperar diario de exportación")
+                .add_filter("Diario SQLite", &["sqlite"])
+                .pick_file();
+            let _ = tx.send(selected);
+            ctx.request_repaint();
+        });
+        self.dialog = Some(rx);
+        self.recovery_dialog = true;
     }
 
     #[cfg(feature = "capture")]
@@ -198,12 +269,20 @@ impl Batch {
         self.destination_path = Some(destination);
         self.prepare();
     }
+    #[cfg(feature = "capture")]
+    pub fn capture_recovery(&mut self, journal: PathBuf) {
+        self.open = true;
+        self.recover(journal);
+    }
 
     pub fn show(&mut self, ctx: &egui::Context) {
         let mut open = self.open;
         egui::Window::new("Exportar por lotes").open(&mut open).default_width(620.0).default_height(550.0)
             .default_pos(ctx.viewport_rect().center() - egui::vec2(310.0, 275.0))
             .vscroll(true).show(ctx, |ui| {
+                if ui.add_enabled(!self.busy && self.dialog.is_none(), egui::Button::new("Recuperar lote…")).clicked() {
+                    self.pick_journal(ctx);
+                }
                 ui.label(format!("{} originales seleccionados", self.paths.len()));
                 let mut changed = false;
                 ui.add_enabled_ui(!self.busy && self.dialog.is_none(), |ui| {
@@ -246,8 +325,18 @@ impl Batch {
                     ui.checkbox(&mut self.acknowledged, "Acepto esta política de color y metadatos");
                     if ui.add_enabled(!self.paths.is_empty() && !self.destination.trim().is_empty(), egui::Button::new("Revisar plan")).clicked() { self.prepare(); }
                 });
-                if changed { self.plan = None; self.results.clear(); self.completed = 0; self.journal = None; }
+                if changed { self.plan = None; self.results.clear(); self.completed = 0; self.journal = None; self.recovery = None; }
                 ui.separator();
+                if let Some(report) = &self.recovery {
+                    ui.label(format!("Diario revisado: {} entradas · {} publicadas verificadas · {} pendientes · {} conflictos",
+                        report.total, report.published, report.pending.items.len(), report.conflicts.len()));
+                    if !report.conflicts.is_empty() {
+                        egui::ScrollArea::vertical().id_salt("recovery-conflicts").max_height(80.0).show_rows(ui, 22.0, report.conflicts.len(), |ui, rows| {
+                            for index in rows { ui.add(egui::Label::new(egui::RichText::new(&report.conflicts[index]).color(egui::Color32::LIGHT_RED)).truncate()).on_hover_text(&report.conflicts[index]); }
+                        });
+                    }
+                    ui.label("Exportar copias procesa solo los pendientes comprobados y crea otro diario. Los conflictos se conservan.");
+                }
                 if let Some(plan) = &self.plan {
                     egui::ScrollArea::vertical().id_salt("batch-plan").max_height(180.0)
                         .show_rows(ui, 22.0, plan.items.len(), |ui, rows| {
@@ -334,5 +423,42 @@ mod tests {
         assert!(batch.open);
         assert_eq!(batch.completed, 1);
         assert_eq!(budget.used(), 0);
+    }
+    #[test]
+    fn recovery_reviews_pending_items_and_requires_acceptance_before_resume() {
+        use rastera_core::BatchBackend;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("imagen.png");
+        image::RgbaImage::new(8, 4).save(&source).unwrap();
+        let output = dir.path().join("output");
+        std::fs::create_dir(&output).unwrap();
+        let plan = LocalBatch
+            .plan(
+                &[source],
+                &output,
+                ExportRecipe::default(),
+                &Default::default(),
+            )
+            .unwrap();
+        let session = LocalBatch.start(&plan).unwrap();
+        let journal = session.journal_path().to_path_buf();
+        drop(session);
+        let mut batch = Batch::new(
+            &egui::Context::default(),
+            MemoryBudget::new(rastera_core::CPU_IMAGE_BUDGET),
+        );
+        batch.recover(journal.clone());
+        settle(&mut batch);
+        assert!(batch.error.is_none(), "{:?}", batch.error);
+        assert_eq!(batch.recovery.as_ref().unwrap().pending.items.len(), 1);
+        batch.execute();
+        assert!(!batch.busy);
+        assert!(!plan.items[0].destination.exists());
+        batch.acknowledged = true;
+        batch.execute();
+        settle(&mut batch);
+        assert_eq!(batch.completed, 1);
+        assert_ne!(batch.journal.as_ref().unwrap(), &journal);
+        assert!(plan.items[0].destination.exists());
     }
 }

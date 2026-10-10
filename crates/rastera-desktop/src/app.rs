@@ -200,7 +200,8 @@ impl RasteraApp {
                 }
                 FolderUpdate::Finished(result) => {
                     #[cfg(feature = "capture")]
-                    if std::env::var_os("RASTERA_CAPTURE_PANEL").is_some()
+                    if std::env::var_os("RASTERA_CAPTURE_PANEL").as_deref()
+                        == Some(std::ffi::OsStr::new("batch"))
                         && let Some(destination) = std::env::var_os("RASTERA_CAPTURE_DEST")
                     {
                         self.batch.capture_plan(
@@ -210,6 +211,10 @@ impl RasteraApp {
                                 .collect(),
                             PathBuf::from(destination),
                         );
+                    }
+                    #[cfg(feature = "capture")]
+                    if let Some(journal) = std::env::var_os("RASTERA_CAPTURE_JOURNAL") {
+                        self.batch.capture_recovery(PathBuf::from(journal));
                     }
                     let paths = if self.entries.is_empty() {
                         self.path.iter().cloned().collect()

@@ -68,11 +68,20 @@ pub struct ExportItem {
     pub destination: PathBuf,
     pub info: ImageInfo,
     pub output_size: (u32, u32),
+    pub source_hash: [u8; 32],
 }
 #[derive(Clone, Debug)]
 pub struct ExportPlan {
     pub items: Vec<ExportItem>,
     pub recipe: ExportRecipe,
+}
+#[derive(Clone, Debug)]
+pub struct RecoveryReport {
+    pub journal: PathBuf,
+    pub total: usize,
+    pub published: usize,
+    pub conflicts: Vec<String>,
+    pub pending: ExportPlan,
 }
 pub trait ExportSession: Send {
     fn journal_path(&self) -> &Path;
@@ -87,6 +96,12 @@ pub trait ExportSession: Send {
     fn finish(&mut self, cancelled: bool) -> Result<()>;
 }
 pub trait BatchBackend: Send + Sync + 'static {
+    fn recover(&self, _journal: &Path, _cancel: &CancellationToken) -> Result<RecoveryReport> {
+        Err(RasteraError::new(
+            ErrorKind::Unsupported,
+            "Este backend no admite recuperación",
+        ))
+    }
     fn plan(
         &self,
         sources: &[PathBuf],
