@@ -34,12 +34,14 @@ Si falla el catálogo, la aplicación muestra el error y permite continuar usand
 
 ## Exportar
 
-1. Selecciona las imágenes y pulsa Herramientas por lotes. Si no hay selección múltiple, se usa la imagen del inspector.
+1. En Biblioteca, selecciona las imágenes y pulsa Exportar selección. En Visor, Exportar imagen usa únicamente la imagen abierta, aunque quede una selección anterior en Biblioteca. Herramientas → Exportar imágenes usa la selección o, si está vacía, la imagen abierta.
 2. Elige una carpeta de destino existente, distinta de la carpeta de los originales.
 3. Configura PNG, JPEG o WebP sin pérdidas, la rotación horaria y el límite del lado mayor. El redimensionado mantiene la proporción y nunca amplía.
 4. Para JPEG, elige la calidad y el fondo que reemplazará la transparencia.
-5. Lee y acepta la política de color y metadatos. Pulsa Revisar plan para comprobar nombres y dimensiones.
-6. Pulsa Exportar copias. Puedes seguir navegando mientras avanza el lote.
+5. Lee y acepta la política de color y metadatos. Pulsa Revisar salidas para comprobar nombres y dimensiones.
+6. Pulsa Exportar N copias. Puedes seguir navegando mientras avanza el lote.
+
+El panel distingue Configurar, Revisar y Resultados. Los botones de revisar, exportar, cancelar y cerrar permanecen fuera del área desplazable. Cada fila muestra el estado de la copia y permite consultar la ruta completa al pasar el cursor. Al terminar se cuentan las publicadas y las no publicadas, y se puede preparar otro lote con las mismas imágenes.
 
 La receta normaliza la orientación EXIF antes de rotar y redimensionar. Visor, miniaturas y lotes admiten SDR de 8 bits y convierten perfiles ICC RGB compatibles de matriz y curvas a sRGB antes de reducir la imagen. Sin ICC se asume sRGB. Las salidas eliminan metadatos originales, incluidos EXIF, GPS y XMP, y reciben un perfil sRGB nuevo. PNG y WebP conservan transparencia; JPEG se recodifica con el fondo indicado.
 
@@ -49,7 +51,7 @@ Las salidas se llaman nombre-rastera.ext. Las entradas que producirían nombres 
 
 Los lotes estiman 32 bytes de buffers por píxel bajo el presupuesto compartido de 512 MiB. Una entrada grande puede rechazarse aunque el visor pueda abrirla. Se procesa un archivo a la vez. El siguiente espera mientras carga la imagen seleccionada; una llamada de códec en curso termina antes de liberar su reserva.
 
-Cancelar comprueba el estado entre etapas y antes de publicar. Las copias publicadas permanecen y los archivos restantes se marcan cancelados. Cerrar la ventana de lotes permite continuar en segundo plano; Ver lote en curso la vuelve a abrir. Al cerrar Rastera se cancela el trabajo pendiente y se espera a los trabajadores.
+Cancelar lote comprueba el estado entre etapas y antes de publicar. Las copias publicadas permanecen y los archivos restantes se marcan cancelados. Ocultar panel permite continuar en segundo plano; Herramientas → Recuperar / ver lote lo vuelve a abrir. Al cerrar Rastera se cancela el trabajo pendiente y se espera a los trabajadores.
 
 ## Resultados y diario
 
@@ -57,6 +59,6 @@ Cada lote crea rastera-export-*.sqlite en el destino, con receta, entradas, sali
 
 Las imágenes se codifican en temporales .rastera-*.tmp dentro del destino, se vacían al disco y se publican mediante persist_noclobber. Esta operación nunca reemplaza una salida. La publicación suele ser atómica en Windows y sistemas Linux actuales; no se promete persistencia ante pérdida de alimentación ni atomicidad universal en cualquier volumen.
 
-Tras una interrupción, abre Herramientas por lotes → Recuperar lote y elige el diario SQLite del destino. Rastera comprueba huellas BLAKE3 de las salidas publicadas y de los originales pendientes, y presenta el resultado. Una entrada ready cuya copia ya exista y coincida con su huella se reconoce como publicada. Las salidas ajenas, originales cambiados y entradas no comprobables aparecen como conflictos.
+Tras una interrupción, abre Herramientas → Recuperar / ver lote → Recuperar un lote y elige el diario SQLite del destino. Rastera comprueba huellas BLAKE3 de las salidas publicadas y de los originales pendientes, y presenta el resultado. Una entrada ready cuya copia ya exista y coincida con su huella se reconoce como publicada. Las salidas ajenas, originales cambiados y entradas no comprobables aparecen como conflictos.
 
-Aceptar la política y pulsar Exportar copias procesa únicamente los pendientes comprobados, con la receta guardada, creando un nuevo diario. Las copias verificadas no se vuelven a escribir y los conflictos se conservan. No se borran temporales ni se modifica el diario anterior. Un diario activo en otra instancia no puede recuperarse. Solo son recuperables los diarios de versión 2 creados desde esta entrega y en el mismo sistema operativo; los anteriores carecen de huellas fiables. La aplicación no busca diarios al iniciarse ni reanuda una exportación sin revisión.
+Aceptar la política y pulsar Exportar N copias procesa únicamente los pendientes comprobados, con la receta guardada, creando un nuevo diario. Las copias verificadas no se vuelven a escribir y los conflictos se conservan. No se borran temporales ni se modifica el diario anterior. Un diario activo en otra instancia no puede recuperarse. Solo son recuperables los diarios de versión 2 creados desde esta entrega y en el mismo sistema operativo; los anteriores carecen de huellas fiables. La aplicación no busca diarios al iniciarse ni reanuda una exportación sin revisión.

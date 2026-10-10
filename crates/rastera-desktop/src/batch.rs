@@ -276,105 +276,170 @@ impl Batch {
     }
 
     pub fn show(&mut self, ctx: &egui::Context) {
+        use crate::theme;
         let mut open = self.open;
-        egui::Window::new("Exportar por lotes").open(&mut open).default_width(620.0).default_height(550.0)
-            .default_pos(ctx.viewport_rect().center() - egui::vec2(310.0, 275.0))
-            .vscroll(true).show(ctx, |ui| {
-                if ui.add_enabled(!self.busy && self.dialog.is_none(), egui::Button::new("Recuperar lote…")).clicked() {
-                    self.pick_journal(ctx);
+        let mut close_requested = false;
+        egui::Window::new("Exportar copias").open(&mut open).collapsible(false)
+            .default_width(640.0).default_height((ctx.viewport_rect().height() - 100.0).clamp(320.0, 600.0)).max_height((ctx.viewport_rect().height() - 80.0).max(240.0))
+            .default_pos(egui::pos2((ctx.viewport_rect().width() - 640.0).max(0.0) * 0.5, 42.0))
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical().id_salt("export-body")
+                    .max_height((ctx.viewport_rect().height() - 210.0).clamp(200.0, 470.0))
+                    .auto_shrink([false, true]).show(ui, |ui| {
+                let step = if !self.results.is_empty() { 3 } else if self.plan.is_some() { 2 } else { 1 };
+                ui.horizontal_wrapped(|ui| {
+                    for (number, label) in [(1, "Configurar"), (2, "Revisar"), (3, "Resultados")] {
+                        ui.label(egui::RichText::new(format!("{number}  {label}")).strong()
+                            .color(if step == number { theme::ACCENT } else { theme::MUTED }));
+                        if number != 3 { ui.label(egui::RichText::new(" / ").color(theme::BORDER)); }
+                    }
+                });
+                ui.add_space(8.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(format!("{} {} de origen", self.paths.len(), if self.paths.len() == 1 { "imagen" } else { "imágenes" }));
+                    if ui.add_enabled(!self.busy && self.dialog.is_none(), egui::Button::new("Recuperar un lote…")).clicked() {
+                        self.pick_journal(ctx);
+                    }
+                });
+                if self.paths.is_empty() && self.recovery.is_none() {
+                    ui.label(egui::RichText::new("Selecciona imágenes en Biblioteca o recupera un lote anterior.").color(theme::MUTED));
                 }
-                ui.label(format!("{} originales seleccionados", self.paths.len()));
+                ui.add_space(8.0);
                 let mut changed = false;
                 ui.add_enabled_ui(!self.busy && self.dialog.is_none(), |ui| {
+                    theme::eyebrow(ui, "DESTINO DE LAS COPIAS");
                     ui.horizontal(|ui| {
-                        ui.label("Destino");
-                        if ui.add(egui::TextEdit::singleline(&mut self.destination).desired_width(350.0)).changed() {
-                            self.destination_path = None;
-                            changed = true;
+                        let width = (ui.available_width() - 155.0).max(100.0);
+                        if ui.add(egui::TextEdit::singleline(&mut self.destination)
+                            .hint_text("Elige otra carpeta para las copias").desired_width(width)).changed() {
+                            self.destination_path = None; changed = true;
                         }
-                        if ui.button("Elegir carpeta").clicked() { self.pick_destination(ctx); }
+                        if ui.button("Elegir carpeta…").clicked() { self.pick_destination(ctx); }
                     });
-                    ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_salt("batch-format").selected_text(match self.recipe.format {
-                            ExportFormat::Png => "PNG", ExportFormat::Jpeg => "JPEG", ExportFormat::WebP => "WebP sin pérdidas",
-                        }).show_ui(ui, |ui| {
-                            for (format, label) in [(ExportFormat::Png, "PNG"), (ExportFormat::Jpeg, "JPEG"), (ExportFormat::WebP, "WebP sin pérdidas")] {
-                                changed |= ui.selectable_value(&mut self.recipe.format, format, label).changed();
-                            }
-                        });
-                        egui::ComboBox::from_id_salt("batch-rotation").selected_text(format!("Rotación: {}°", self.recipe.rotation)).show_ui(ui, |ui| {
-                            for rotation in [0, 90, 180, 270] {
-                                changed |= ui.selectable_value(&mut self.recipe.rotation, rotation, format!("{rotation}° horario")).changed();
-                            }
-                        });
+                    ui.add_space(12.0);
+                    theme::eyebrow(ui, "FORMATO Y TAMAÑO");
+                    ui.horizontal_wrapped(|ui| {
+                        for (format, label) in [(ExportFormat::Png, "PNG"), (ExportFormat::Jpeg, "JPEG"), (ExportFormat::WebP, "WebP sin pérdidas")] {
+                            changed |= ui.selectable_value(&mut self.recipe.format, format, label).changed();
+                        }
+                        egui::ComboBox::from_id_salt("batch-rotation")
+                            .selected_text(if self.recipe.rotation == 0 { "Sin rotación".to_owned() } else { format!("Rotar {}°", self.recipe.rotation) })
+                            .show_ui(ui, |ui| {
+                                for rotation in [0, 90, 180, 270] {
+                                    changed |= ui.selectable_value(&mut self.recipe.rotation, rotation,
+                                        if rotation == 0 { "Sin rotación".to_owned() } else { format!("{rotation}° horario") }).changed();
+                                }
+                            });
                     });
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         changed |= ui.checkbox(&mut self.resize, "Limitar lado mayor").changed();
                         changed |= ui.add_enabled(self.resize, egui::DragValue::new(&mut self.edge).range(1..=64000).suffix(" px")).changed();
-                        ui.label("Mantiene proporción, sin ampliar.");
+                        ui.label(egui::RichText::new("Sin ampliar · Mantiene proporción").small().color(theme::MUTED));
                     });
                     if self.recipe.format == ExportFormat::Jpeg {
                         changed |= ui.add(egui::Slider::new(&mut self.recipe.jpeg_quality, 1..=100).text("Calidad JPEG")).changed();
                         ui.horizontal(|ui| {
-                            ui.label("Fondo para transparencias:");
+                            ui.label("Fondo para transparencias");
                             changed |= ui.color_edit_button_srgb(&mut self.recipe.jpeg_background).changed();
                         });
                     }
-                    ui.label("Se normaliza la orientación EXIF. Las salidas eliminan EXIF, GPS, XMP y otros metadatos.");
-                    ui.label("ICC RGB de matriz/curvas → sRGB de 8 bits. Sin ICC se asume sRGB; HDR y otros perfiles se rechazan.");
-                    ui.checkbox(&mut self.acknowledged, "Acepto esta política de color y metadatos");
-                    if ui.add_enabled(!self.paths.is_empty() && !self.destination.trim().is_empty(), egui::Button::new("Revisar plan")).clicked() { self.prepare(); }
-                });
-                if changed { self.plan = None; self.results.clear(); self.completed = 0; self.journal = None; self.recovery = None; }
-                ui.separator();
-                if let Some(report) = &self.recovery {
-                    ui.label(format!("Diario revisado: {} entradas · {} publicadas verificadas · {} pendientes · {} conflictos",
-                        report.total, report.published, report.pending.items.len(), report.conflicts.len()));
-                    if !report.conflicts.is_empty() {
-                        egui::ScrollArea::vertical().id_salt("recovery-conflicts").max_height(80.0).show_rows(ui, 22.0, report.conflicts.len(), |ui, rows| {
-                            for index in rows { ui.add(egui::Label::new(egui::RichText::new(&report.conflicts[index]).color(egui::Color32::LIGHT_RED)).truncate()).on_hover_text(&report.conflicts[index]); }
-                        });
+                    ui.add_space(12.0);
+                    egui::CollapsingHeader::new("Color y metadatos de las copias").show(ui, |ui| {
+                        ui.label("Se normaliza la orientación EXIF y se convierte a sRGB de 8 bits. Las copias eliminan los metadatos originales, incluidos EXIF, GPS y XMP.");
+                        ui.label("Se admiten ICC RGB de matriz/curvas. Sin ICC se asume sRGB; HDR y otros perfiles se rechazan.");
+                    });
+                    ui.label(egui::RichText::new("Las copias se orientan y convierten a sRGB. No conservan los metadatos originales.").small().color(theme::MUTED));
+                    ui.checkbox(&mut self.acknowledged, "Acepto la conversión de color y eliminación de metadatos");
+                    if changed {
+                        self.plan = None; self.results.clear(); self.completed = 0; self.journal = None; self.recovery = None;
                     }
-                    ui.label("Exportar copias procesa solo los pendientes comprobados y crea otro diario. Los conflictos se conservan.");
+                    ui.add_space(4.0);
+                });
+                if let Some(report) = &self.recovery {
+                    ui.separator();
+                    ui.label(format!("Recuperación: {} verificadas · {} pendientes · {} conflictos",
+                        report.published, report.pending.items.len(), report.conflicts.len()));
+                    egui::ScrollArea::vertical().id_salt("recovery-conflicts").max_height(100.0)
+                        .show_rows(ui, 24.0, report.conflicts.len(), |ui, rows| {
+                            for index in rows {
+                                ui.add(egui::Label::new(egui::RichText::new(&report.conflicts[index])
+                                    .color(egui::Color32::LIGHT_RED)).truncate()).on_hover_text(&report.conflicts[index]);
+                            }
+                        });
+                    ui.label(egui::RichText::new("Solo se exportarán los pendientes comprobados. Los conflictos se conservan.").small().color(theme::MUTED));
                 }
                 if let Some(plan) = &self.plan {
-                    egui::ScrollArea::vertical().id_salt("batch-plan").max_height(180.0)
-                        .show_rows(ui, 22.0, plan.items.len(), |ui, rows| {
+                    ui.add_space(8.0); ui.separator(); ui.add_space(8.0);
+                    theme::eyebrow(ui, if self.results.is_empty() { "REVISA LAS SALIDAS" } else { "RESULTADO POR IMAGEN" });
+                    ui.label(egui::RichText::new(format!("{} {} · {}", plan.items.len(), if plan.items.len() == 1 { "copia" } else { "copias" },
+                        plan.items.first().and_then(|item| item.destination.parent())
+                            .map_or_else(String::new, |path| path.display().to_string()))).small().color(theme::MUTED));
+                    egui::ScrollArea::vertical().id_salt("batch-plan").max_height(160.0).auto_shrink([false, true])
+                        .show_rows(ui, 26.0, plan.items.len(), |ui, rows| {
                             for index in rows {
                                 let item = &plan.items[index];
                                 let status = self.results.get(index).and_then(Option::as_ref);
                                 let name = item.destination.file_name().unwrap_or_default().to_string_lossy();
-                                match status {
-                                    Some(Ok(())) => { ui.add(egui::Label::new(egui::RichText::new(format!("{name} · Publicada")).color(egui::Color32::LIGHT_GREEN)).truncate()); }
-                                    Some(Err(error)) => { ui.add(egui::Label::new(egui::RichText::new(format!("{name} · {error}")).color(egui::Color32::LIGHT_RED)).truncate()).on_hover_text(error); }
-                                    None => { ui.add(egui::Label::new(format!("{name} · {} × {} px", item.output_size.0, item.output_size.1)).truncate()); }
-                                }
+                                let (text, color) = match status {
+                                    Some(Ok(())) => (format!("{name} · Publicada"), theme::ACCENT),
+                                    Some(Err(error)) => (format!("{name} · {error}"), egui::Color32::LIGHT_RED),
+                                    None => (format!("{name} · {} × {} px", item.output_size.0, item.output_size.1), theme::TEXT),
+                                };
+                                ui.add(egui::Label::new(egui::RichText::new(&text).color(color)).truncate())
+                                    .on_hover_text(format!("{text}\n{} → {}", item.source.display(), item.destination.display()));
                             }
                         });
-                    if !self.busy && self.results.is_empty()
-                        && ui.add_enabled(self.acknowledged && self.dialog.is_none(), egui::Button::new("Exportar copias")).clicked()
-                    {
-                        self.execute();
-                    }
+                    ui.add_space(8.0);
                 }
                 if self.busy {
-                    ui.spinner();
-                    if ui.button("Cancelar").clicked() { self.worker.cancel(); }
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(if self.results.is_empty() { "Comprobando archivos…" } else { "Exportando copias…" });
+                    });
+                    ui.label(egui::RichText::new("Puedes cerrar este panel y seguir navegando.").small().color(theme::MUTED));
                 }
                 if !self.results.is_empty() {
                     let published = self.results.iter().filter(|result| matches!(result, Some(Ok(())))).count();
-                    ui.add(egui::ProgressBar::new(self.completed as f32 / self.results.len() as f32).text(format!(
-                        "{} / {} procesadas · {} publicadas{}", self.completed, self.results.len(), published,
-                        if self.cancelled { " · cancelado" } else { "" })));
+                    let failed = self.results.iter().filter(|result| matches!(result, Some(Err(_)))).count();
+                    ui.add(egui::ProgressBar::new(self.completed as f32 / self.results.len() as f32)
+                        .fill(theme::ACCENT).text(format!("{} / {} procesadas", self.completed, self.results.len())));
+                    ui.label(format!("{published} publicadas · {failed} sin publicar{}",
+                        if self.cancelled { " · Lote cancelado" } else if !self.busy { " · Finalizado" } else { "" }));
+                    if !self.busy && ui.button("Preparar otro lote con estas imágenes").clicked() {
+                        self.plan = None; self.results.clear(); self.completed = 0; self.recovery = None;
+                        self.journal = None; self.error = None; self.acknowledged = false;
+                    }
                 }
-                if let Some(error) = &self.error { ui.colored_label(egui::Color32::LIGHT_RED, error); }
-                if let Some(path) = &self.journal { ui.label(format!("Diario: {}", path.display())); }
-                ui.label("Nunca se reemplaza una salida existente. Cancelar conserva las copias ya publicadas.");
+                if let Some(error) = &self.error {
+                    ui.add_space(8.0);
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                }
+                if let Some(path) = &self.journal {
+                    egui::CollapsingHeader::new("Registro de la exportación").show(ui, |ui| {
+                        ui.add(egui::Label::new(path.to_string_lossy()).wrap());
+                        if ui.button("Copiar ruta del registro").clicked() { ctx.copy_text(path.to_string_lossy().into_owned()); }
+                    });
+                }
+                });
+                ui.separator();
+                ui.horizontal_wrapped(|ui| {
+                    if self.busy {
+                        if ui.button("Cancelar lote").clicked() { self.worker.cancel(); }
+                    } else if self.results.is_empty() {
+                        if let Some(plan) = &self.plan {
+                            let count = plan.items.len();
+                            if ui.add_enabled(self.acknowledged && self.dialog.is_none(), theme::primary(format!("Exportar {count} {}", if count == 1 { "copia" } else { "copias" })))
+                                .on_hover_text(if self.acknowledged { "Crear las copias revisadas" } else { "Acepta la política de color y metadatos para continuar" }).clicked() { self.execute(); }
+                        } else if ui.add_enabled(!self.paths.is_empty() && !self.destination.trim().is_empty() && self.dialog.is_none(),
+                            theme::primary("Revisar salidas")).on_hover_text("Comprueba nombres y dimensiones antes de exportar").clicked() { self.prepare(); }
+                    }
+                    if ui.button(if self.busy { "Ocultar panel" } else { "Cerrar" }).clicked() { close_requested = true; }
+                });
+                ui.label(egui::RichText::new("Los originales se conservan. No se reemplazan archivos.").small().color(theme::MUTED));
             });
-        self.open = open;
+        self.open = open && !close_requested;
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
