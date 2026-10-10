@@ -96,7 +96,17 @@ try {
     # Exclusive creation prevents a competing writer from being replaced.
     $taskFile = [IO.File]::Open($taskOutput,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write)
     $taskWriter = [IO.StreamWriter]::new($taskFile)
-    try { $taskResults | ConvertTo-Csv -NoTypeInformation | ForEach-Object { $taskWriter.WriteLine($_) } }
+    try {
+        # Numeric CSV fields must use the same decimal separator on every machine.
+        foreach ($taskRow in $taskResults) {
+            foreach ($taskProperty in $taskRow.PSObject.Properties) {
+                if ($taskProperty.Value -is [double]) {
+                    $taskProperty.Value = $taskProperty.Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture)
+                }
+            }
+        }
+        $taskResults | ConvertTo-Csv -NoTypeInformation | ForEach-Object { $taskWriter.WriteLine($_) }
+    }
     finally { $taskWriter.Dispose() }
 } finally {
     $env:LOCALAPPDATA = $taskOriginalData

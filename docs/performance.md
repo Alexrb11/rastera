@@ -2,6 +2,8 @@
 
 El botón Rendimiento abre contadores locales de la sesión: reservas CPU actuales, máximo y límite; tamaños de píxeles GPU; cargas completadas, fallidas y canceladas; duración de la última carga; aciertos y decodificaciones solicitadas por la caché en disco.
 
+Los [resultados iniciales del 10 de octubre de 2026](performance-results.md) incluyen las observaciones CSV y el equipo de referencia.
+
 Las reservas estiman buffers y entrega, no toda la RAM. Los tamaños GPU excluyen copias y sobrecostes del controlador. La duración del trabajador incluye inspección, espera de memoria, decodificación y color hasta encolar el resultado; no mide la presentación en pantalla. No se transmiten datos fuera de la aplicación.
 
 ## Banco del procesamiento
@@ -30,6 +32,8 @@ El script measure-window inicia instancias de prueba con directorios de datos ai
 Full activa 100% mediante la característica de desarrollo capture y comprueba que el ejecutable la incluye. No solicita una captura. Sin Full se usa la vista habitual de la carpeta o imagen. El script restaura las variables de entorno y nunca utiliza el catálogo personal.
 
 El CSV del proceso diferencia working set (memoria residente) y memoria privada muestreada; las reservas internas se miden por separado en el banco y el panel. El máximo de working set procede del SO; el máximo privado depende del muestreo y puede perder picos breves. La CPU total incluye arranque y procesamiento; la CPU final corresponde a los últimos dos segundos, expresada como porcentaje de un núcleo y de la capacidad lógica del equipo. No demuestra que la aplicación hubiera terminado de cargar: comprueba la escena con capture antes de interpretar esa fase como reposo.
+
+Los números del CSV usan punto decimal independientemente de la configuración regional. En el banco, reserved_peak_bytes es el máximo acumulado de toda la repetición, compartido por sus cuatro fases; no es un máximo independiente de cada fila.
 
 Se ejecuta con ventana iniciada en modo oculto. Esto puede influir en la planificación gráfica y no representa interacción continua. No mide VRAM real, latencia de entrada, primera presentación, rendimiento de lotes ni respuesta durante desplazamiento.
 

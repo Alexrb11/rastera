@@ -203,7 +203,7 @@ Al exportar una rotación aplicada físicamente, la orientación EXIF se normali
 
 Convertir transparencia a JPEG requiere un fondo elegido. La aplicación no decidirá silenciosamente un color. La rotación y el redimensionado de JPEG implican recodificación en este alcance; no se presentarán como operaciones sin pérdida. Los parámetros de calidad se mostrarán junto al formato de salida.
 
-Los buffers permanecerán en CPU durante las transformaciones iniciales. La GPU se usará para presentación; trasladar filtros a GPU será una decisión posterior basada en el coste de cálculo y transferencias. Imágenes mayores que una textura soportada usarán una previsualización compatible; el visor por mosaicos será una ampliación independiente.
+Los buffers permanecen en CPU durante las transformaciones iniciales. La GPU se usa para presentación; trasladar filtros a GPU será una decisión posterior basada en el coste de cálculo y transferencias. El visor conserva una previsualización compatible y carga resolución completa al ampliar, presentando los mosaicos visibles con una caché acotada. Una dimensión del original puede superar el límite de textura porque se sube por partes.
 
 ## Operaciones por lotes
 
@@ -240,6 +240,8 @@ Las pruebas de integración cubrirán colisiones, cambios externos, disco lleno 
 Las mediciones se realizarán en builds de release y registrarán equipo, versión, corpus y configuración. Se observarán memoria del proceso, presupuestos internos, memoria GPU cuando sea medible, tiempo hasta la primera cuadrícula, latencia de navegación, rendimiento del lote, CPU en reposo y tiempo de cancelación. Se distinguirá caché fría y caliente.
 
 No se publicarán porcentajes de mejora sin una comparación reproducible. Los criterios concretos y la secuencia de implementación están en el [plan de desarrollo](roadmap.md).
+
+Las [mediciones iniciales en Windows](performance-results.md) separan procesamiento sin UI, reservas internas y memoria del proceso nativo. Todavía no validan latencia de interacción, desplazamiento continuado ni rendimiento de lotes.
 
 Las primeras decisiones que requieren prototipo son el presupuesto de buffers, la accesibilidad de la cuadrícula, la publicación sin reemplazo y la compatibilidad de los códecs. Si una biblioteca no satisface un requisito, se revisará antes de ampliar el alcance. No se añadirá un sistema de plugins ni una API de red durante el MVP.
 

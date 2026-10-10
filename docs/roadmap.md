@@ -2,7 +2,7 @@
 
 Este plan lleva la arquitectura desde el prototipo hasta una primera aplicación útil en Windows. Las fases se completan mediante criterios observables, no por una fecha estimada.
 
-El avance inicial incluye workspace, CI, visor nativo, navegación progresiva por carpetas, cuadrícula virtualizada y selección múltiple. Las miniaturas tienen una caché LRU en GPU y una caché persistente acotada en disco, con un trabajador cancelable que comparte memoria con el visor. Se ha comprobado el renderizado en Windows. Las fases siguen abiertas: faltan validación de accesibilidad, mediciones con bibliotecas grandes, observación de cambios externos y descubrimiento de diarios al iniciar. El catálogo local ya guarda favoritos, etiquetas y dimensiones, con búsqueda y filtros en la carpeta abierta.
+El avance inicial incluye workspace, CI, visor nativo con resolución completa por mosaicos, navegación progresiva por carpetas, cuadrícula virtualizada y selección múltiple. Las miniaturas tienen una caché LRU en GPU y una caché persistente acotada en disco, con un trabajador cancelable que comparte memoria con el visor. Se ha comprobado el renderizado y publicado una primera medición de release en Windows con 1.000 y 10.000 PNG sintéticos y un original de 9 megapíxeles. Las fases siguen abiertas: faltan validación de accesibilidad, mediciones con fotografías variadas e interacción, observación de cambios externos y descubrimiento de diarios al iniciar. El catálogo local ya guarda favoritos, etiquetas y dimensiones, con búsqueda y filtros en la carpeta abierta.
 
 ## Fase 1 Base técnica y visor
 
@@ -100,3 +100,5 @@ Se anotarán hardware, sistema operativo, commit, build de release y configuraci
 Los valores de caché del diseño son presupuestos iniciales; los objetivos de latencia y memoria total se fijarán después del primer prototipo y quedarán registrados con su equipo de referencia. La ausencia de crecimiento sostenido al navegar repetidamente se comprobará sin exigir que el asignador devuelva inmediatamente toda la memoria al sistema.
 
 Consultar la [arquitectura](architecture.md) para las responsabilidades y garantías de cada componente.
+
+La primera [línea de referencia medida](performance-results.md) registra caché, escaneo y memoria nativa. El procesamiento completo de 10.000 miniaturas crece más que el número de archivos; perfilar el mantenimiento de la caché en disco es una prioridad antes de ampliar este banco.
