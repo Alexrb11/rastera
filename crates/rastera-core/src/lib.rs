@@ -5,3 +5,6 @@ pub const APP_NAME: &str = "Rastera";
 
 mod images;
 pub use images::*;
+
+mod folders;
+pub use folders::*;

@@ -2,9 +2,9 @@ use std::{path::PathBuf, sync::Arc};
 
 use crossbeam_channel::{Receiver, bounded};
 use eframe::egui::{self, Align, Color32, Layout, Rect, RichText, Sense, TextureHandle, Vec2};
-use rastera_adapters::LocalImages;
-use rastera_core::{CPU_IMAGE_BUDGET, ErrorKind, ImageInfo};
-use rastera_engine::{ImageLoader, memory::MemoryBudget};
+use rastera_adapters::{LocalFolders, LocalImages};
+use rastera_core::{CPU_IMAGE_BUDGET, ErrorKind, FolderEntry, ImageInfo};
+use rastera_engine::{FolderScanner, FolderUpdate, ImageLoader, memory::MemoryBudget};
 
 const ACCENT: Color32 = Color32::from_rgb(138, 211, 174);
 const MUTED: Color32 = Color32::from_rgb(150, 165, 180);
@@ -17,6 +17,12 @@ struct Preview {
 
 pub struct RasteraApp {
     loader: ImageLoader,
+    scanner: FolderScanner,
+    folder_generation: u64,
+    folder: Option<PathBuf>,
+    entries: Vec<FolderEntry>,
+    folder_loading: bool,
+    folder_error: Option<String>,
     generation: u64,
     path: Option<PathBuf>,
     path_input: String,
@@ -40,8 +46,19 @@ impl RasteraApp {
             MemoryBudget::new(CPU_IMAGE_BUDGET),
             Arc::new(move || ctx.request_repaint()),
         );
+        let ctx = cc.egui_ctx.clone();
+        let scanner = FolderScanner::new(
+            Arc::new(LocalFolders),
+            Arc::new(move || ctx.request_repaint()),
+        );
         let mut app = Self {
             loader,
+            scanner,
+            folder_generation: 0,
+            folder: None,
+            entries: Vec::new(),
+            folder_loading: false,
+            folder_error: None,
             generation: 0,
             path: None,
             path_input: String::new(),
@@ -62,6 +79,22 @@ impl RasteraApp {
     }
 
     fn open(&mut self, path: PathBuf) {
+        self.folder_generation += 1;
+        self.generation += 1;
+        self.loader.cancel();
+        self.preview = None;
+        self.path = None;
+        self.path_input = path.to_string_lossy().into_owned();
+        self.entries.clear();
+        self.error = None;
+        self.loading = false;
+        self.folder_loading = true;
+        self.folder_error = None;
+        self.folder = Some(path.clone());
+        self.scanner.request(self.folder_generation, path);
+    }
+
+    fn open_image(&mut self, path: PathBuf) {
         self.generation += 1;
         self.path_input = path.to_string_lossy().into_owned();
         self.path = Some(path.clone());
@@ -74,16 +107,26 @@ impl RasteraApp {
     }
 
     fn pick_file(&mut self, ctx: &egui::Context) {
+        self.pick_path(ctx, false);
+    }
+
+    fn pick_path(&mut self, ctx: &egui::Context, folder: bool) {
         if self.dialog.is_some() {
             return;
         }
         let (tx, rx) = bounded(1);
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let selected = rfd::FileDialog::new()
-                .set_title("Abrir imagen en Rastera")
-                .add_filter("Imágenes", &["jpg", "jpeg", "png", "webp"])
-                .pick_file();
+            let selected = if folder {
+                rfd::FileDialog::new()
+                    .set_title("Abrir carpeta en Rastera")
+                    .pick_folder()
+            } else {
+                rfd::FileDialog::new()
+                    .set_title("Abrir imagen en Rastera")
+                    .add_filter("Imágenes", &["jpg", "jpeg", "png", "webp"])
+                    .pick_file()
+            };
             let _ = tx.send(selected);
             ctx.request_repaint();
         });
@@ -103,6 +146,42 @@ impl RasteraApp {
                     self.dialog = None;
                 }
                 Err(crossbeam_channel::TryRecvError::Empty) => {}
+            }
+        }
+        while let Some(event) = self.scanner.try_recv() {
+            if event.generation != self.folder_generation {
+                continue;
+            }
+            match event.update {
+                FolderUpdate::File(path) => {
+                    self.folder = None;
+                    self.open_image(path);
+                }
+                FolderUpdate::Page(page) => {
+                    let first = if self.entries.is_empty() && self.path.is_none() {
+                        page.first().map(|entry| entry.path.clone())
+                    } else {
+                        None
+                    };
+                    self.entries.extend(page);
+                    if let Some(path) = first {
+                        self.open_image(path);
+                    }
+                }
+                FolderUpdate::Sorted(entries) => {
+                    self.entries = entries;
+                }
+                FolderUpdate::Finished(result) => {
+                    self.folder_loading = false;
+                    if let Err(error) = result
+                        && error.kind != ErrorKind::Cancelled
+                    {
+                        self.folder_error = Some(error.to_string());
+                        if self.entries.is_empty() {
+                            self.folder = None;
+                        }
+                    }
+                }
             }
         }
         while let Some(event) = self.loader.try_recv() {
@@ -140,6 +219,12 @@ impl RasteraApp {
             self.pick_file(ctx);
         }
         if !ctx.egui_wants_keyboard_input() {
+            if ctx.input(|input| input.key_pressed(egui::Key::ArrowRight)) {
+                self.step(1);
+            }
+            if ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft)) {
+                self.step(-1);
+            }
             if ctx.input(|input| input.key_pressed(egui::Key::Home)) {
                 self.zoom = None;
                 self.pan = Vec2::ZERO;
@@ -164,6 +249,22 @@ impl RasteraApp {
         });
         if let Some(path) = dropped {
             self.open(path);
+        }
+    }
+
+    fn step(&mut self, delta: isize) {
+        let current = self
+            .entries
+            .iter()
+            .position(|entry| Some(&entry.path) == self.path.as_ref());
+        if let Some(current) = current {
+            let next = current.checked_add_signed(delta);
+            if let Some(path) = next
+                .and_then(|index| self.entries.get(index))
+                .map(|entry| entry.path.clone())
+            {
+                self.open_image(path);
+            }
         }
     }
 
@@ -198,7 +299,7 @@ impl RasteraApp {
                 std::process::exit(1);
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        } else if !self.capture_requested && !self.loading {
+        } else if !self.capture_requested && !self.loading && !self.folder_loading {
             self.capture_requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }
@@ -215,6 +316,9 @@ impl RasteraApp {
                 if ui.button("Abrir imagen · Ctrl+O").clicked() {
                     self.pick_file(ui.ctx());
                 }
+                if ui.button("Abrir carpeta").clicked() {
+                    self.pick_path(ui.ctx(), true);
+                }
             });
         });
         ui.add_space(6.0);
@@ -223,7 +327,7 @@ impl RasteraApp {
             ui.add_space(12.0);
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.path_input)
-                    .hint_text("Ruta de la imagen…")
+                    .hint_text("Ruta de una imagen o carpeta…")
                     .desired_width((ui.available_width() - 90.0).max(80.0)),
             );
             let enter =
@@ -271,6 +375,53 @@ impl RasteraApp {
                 ui.label(RichText::new("Puede incluir orientación EXIF o una vista reducida. Zoom sobre la vista previa.").color(MUTED));
             }
         }
+        if let Some(folder) = &self.folder {
+            ui.add_space(16.0);
+            ui.separator();
+            ui.label(RichText::new("CARPETA").small().color(MUTED));
+            ui.label(
+                folder
+                    .file_name()
+                    .unwrap_or(folder.as_os_str())
+                    .to_string_lossy(),
+            );
+            ui.label(format!(
+                "{} imágenes{}",
+                self.entries.len(),
+                if self.folder_loading {
+                    " · leyendo…"
+                } else {
+                    ""
+                }
+            ));
+            let mut chosen = None;
+            let row_height = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
+            egui::ScrollArea::vertical()
+                .id_salt("folder-list")
+                .max_height(180.0)
+                .show_rows(ui, row_height, self.entries.len(), |ui, rows| {
+                    for index in rows {
+                        let entry = &self.entries[index];
+                        let selected = self.path.as_ref() == Some(&entry.path);
+                        if ui
+                            .add(
+                                egui::Button::selectable(
+                                    selected,
+                                    entry.path.file_name().unwrap_or_default().to_string_lossy(),
+                                )
+                                .truncate(),
+                            )
+                            .on_hover_text(entry.path.to_string_lossy())
+                            .clicked()
+                        {
+                            chosen = Some(entry.path.clone());
+                        }
+                    }
+                });
+            if let Some(path) = chosen {
+                self.open_image(path);
+            }
+        }
         ui.add_space(20.0);
         ui.separator();
         ui.add_space(12.0);
@@ -279,12 +430,22 @@ impl RasteraApp {
         ui.label("Arrastrar: desplazar");
         ui.label("Home: ajustar a ventana");
         ui.label("+ / −: cambiar zoom");
+        ui.label("Flechas: anterior o siguiente");
         ui.add_space(14.0);
         ui.label(RichText::new("Los originales permanecen intactos.").color(MUTED));
     }
 
     fn viewer(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
+            if !self.entries.is_empty() {
+                if ui.button("Anterior").clicked() {
+                    self.step(-1);
+                }
+                if ui.button("Siguiente").clicked() {
+                    self.step(1);
+                }
+                ui.separator();
+            }
             if ui.button("Ajustar").clicked() {
                 self.zoom = None;
                 self.pan = Vec2::ZERO;
@@ -359,25 +520,41 @@ impl RasteraApp {
                 Color32::WHITE,
             );
         } else {
-            let message = if self.loading {
+            let message = if self.loading || self.folder_loading {
                 "Cargando imagen…"
             } else if self.error.is_some() {
                 "No se pudo abrir esta imagen"
+            } else if self.folder_error.is_some() {
+                "No se pudo abrir esta ruta"
+            } else if self.folder.is_some() {
+                "No hay imágenes compatibles en esta carpeta"
             } else {
                 "Arrastra una imagen aquí"
             };
-            painter.text(
-                canvas.center() - egui::vec2(0.0, 12.0),
-                egui::Align2::CENTER_CENTER,
-                message,
+            let text_width = (canvas.width() - 48.0).max(1.0);
+            let heading = painter.layout(
+                message.to_owned(),
                 egui::FontId::proportional(26.0),
                 Color32::WHITE,
+                text_width,
             );
-            painter.text(
-                canvas.center() + egui::vec2(0.0, 26.0),
-                egui::Align2::CENTER_CENTER,
-                "JPEG · PNG · WebP  |  Ctrl+O para abrir",
+            let hint = painter.layout(
+                "JPEG · PNG · WebP  |  Ctrl+O para abrir".to_owned(),
                 egui::FontId::proportional(15.0),
+                MUTED,
+                text_width,
+            );
+            let height = heading.size().y + hint.size().y + 16.0;
+            let top = canvas.center().y - height * 0.5;
+            let hint_top = top + heading.size().y + 16.0;
+            painter.galley(
+                egui::pos2(canvas.center().x - heading.size().x * 0.5, top),
+                heading,
+                Color32::WHITE,
+            );
+            painter.galley(
+                egui::pos2(canvas.center().x - hint.size().x * 0.5, hint_top),
+                hint,
                 MUTED,
             );
         }
@@ -391,6 +568,9 @@ impl eframe::App for RasteraApp {
         self.shortcuts(&ctx);
         self.header(ui);
         if let Some(error) = &self.error {
+            ui.label(RichText::new(error).color(Color32::from_rgb(255, 155, 140)));
+        }
+        if let Some(error) = &self.folder_error {
             ui.label(RichText::new(error).color(Color32::from_rgb(255, 155, 140)));
         }
         let height = (ui.available_height() - 30.0).max(100.0);
@@ -418,9 +598,13 @@ impl eframe::App for RasteraApp {
         });
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(if self.loading { "Cargando…" } else { "Listo" })
-                    .small()
-                    .color(MUTED),
+                RichText::new(if self.loading || self.folder_loading {
+                    "Cargando…"
+                } else {
+                    "Listo"
+                })
+                .small()
+                .color(MUTED),
             );
             if self.dialog.is_some() {
                 ui.label("Seleccionando archivo…");

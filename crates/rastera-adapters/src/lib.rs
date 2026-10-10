@@ -2,3 +2,6 @@
 
 mod images;
 pub use images::LocalImages;
+
+mod folders;
+pub use folders::LocalFolders;

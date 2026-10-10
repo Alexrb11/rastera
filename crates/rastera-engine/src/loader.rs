@@ -136,6 +136,16 @@ impl ImageLoader {
         self.results.try_recv().ok()
     }
 
+    pub fn cancel(&self) {
+        let (lock, _) = &*self.state;
+        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        state.pending = None;
+        if let Some(active) = &state.active {
+            active.cancel();
+        }
+        while self.results.try_recv().is_ok() {}
+    }
+
     pub fn reserved_bytes(&self) -> u64 {
         self.budget.used()
     }

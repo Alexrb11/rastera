@@ -1,6 +1,8 @@
 # Plan de desarrollo de Rastera
 
-Este plan lleva la arquitectura desde el prototipo hasta una primera aplicación útil en Windows. Las fases se completan mediante criterios observables, no por una fecha estimada. Las funciones descritas todavía no están implementadas.
+Este plan lleva la arquitectura desde el prototipo hasta una primera aplicación útil en Windows. Las fases se completan mediante criterios observables, no por una fecha estimada.
+
+El avance inicial incluye workspace, CI, visor nativo y navegación progresiva por carpetas con lista virtualizada. Hay pruebas del motor y los adaptadores, y una comprobación visual del renderizado en Windows. Las fases siguen abiertas: faltan, entre otras tareas, validación de accesibilidad, carga de resolución completa, cuadrícula de miniaturas, catálogo y lotes.
 
 ## Fase 1 Base técnica y visor
 

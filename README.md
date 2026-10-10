@@ -10,6 +10,8 @@ El primer visor está implementado: abre JPEG, PNG y WebP estáticos mediante di
 
 La arquitectura describe también las siguientes fases. El catálogo, las etiquetas, las miniaturas persistentes y las operaciones por lotes todavía están pendientes. No hay una comparación de rendimiento publicada.
 
+También se pueden abrir carpetas mediante diálogo, ruta, arrastre o argumento de inicio. La lectura emite páginas progresivamente y la lista dibuja únicamente las filas visibles. Las flechas permiten pasar al archivo anterior o siguiente. El alcance inicial es una carpeta sin recursión, con un límite de 10.000 archivos y 16 MiB de rutas; los enlaces se excluyen. La lista se ordena por ruta al terminar el escaneo. Una extensión compatible no garantiza que su contenido sea una imagen válida.
+
 Windows será la primera plataforma de desarrollo. La separación entre interfaz, lógica y adaptadores permitirá incorporar Linux y macOS después de comprobar su integración y distribución.
 
 ## Funciones previstas

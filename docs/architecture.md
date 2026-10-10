@@ -24,7 +24,7 @@ RAW, HDR, animaciones, reconocimiento mediante IA, sincronización en la nube y 
 
 ## Componentes y dependencias
 
-La siguiente estructura es la organización prevista, todavía no un conjunto de directorios implementados.
+El workspace y los cuatro componentes ya existen. La siguiente estructura incluye también los directorios de fixtures y benchmarks previstos para las siguientes fases.
 
 ```text
 rastera/
