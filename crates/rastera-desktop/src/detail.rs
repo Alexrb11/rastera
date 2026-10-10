@@ -12,6 +12,7 @@ const TILE: u32 = 512;
 const MAX_TILES: usize = 60;
 const UPLOADS_PER_FRAME: usize = 4;
 struct Tile {
+    bytes: u64,
     texture: TextureHandle,
     uv: Rect,
     touched: u64,
@@ -98,6 +99,12 @@ impl DetailView {
     pub fn active(&self) -> bool {
         self.attempted
     }
+    pub fn diagnostics(&self) -> (u64, rastera_engine::ImageLoadStats) {
+        (
+            self.tiles.values().map(|tile| tile.bytes).sum(),
+            self.loader.stats(),
+        )
+    }
 
     /// Draw each visible region exactly once, including transparent fallback regions.
     pub fn paint(
@@ -153,6 +160,7 @@ impl DetailView {
                 }
             }
             let (pixels, uv) = tile_pixels(image, *coord);
+            let bytes = pixels.pixels.len() as u64 * 4;
             let texture = ctx.load_texture(
                 format!("detail-{}-{}-{}", self.generation, coord.0, coord.1),
                 pixels,
@@ -161,6 +169,7 @@ impl DetailView {
             self.tiles.insert(
                 *coord,
                 Tile {
+                    bytes,
                     texture,
                     uv,
                     touched: self.clock,

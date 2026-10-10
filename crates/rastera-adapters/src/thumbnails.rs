@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -25,10 +25,17 @@ const MAX_RECORD: u64 = 256 * 256 * 4 + 65_536 + 40;
 const DISK_BUDGET: u64 = 2 * 1024 * 1024 * 1024;
 
 pub struct CachedThumbnails {
+    hits: AtomicU64,
+    misses: AtomicU64,
     root: Option<PathBuf>,
     source: Arc<dyn ImageBackend>,
     budget: u64,
     requests: AtomicUsize,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct ThumbnailCacheStats {
+    pub hits: u64,
+    pub misses: u64,
 }
 impl Default for CachedThumbnails {
     fn default() -> Self {
@@ -42,10 +49,18 @@ impl Default for CachedThumbnails {
 impl CachedThumbnails {
     pub fn new(root: Option<PathBuf>) -> Self {
         Self {
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
             root,
             source: Arc::new(LocalImages),
             budget: DISK_BUDGET,
             requests: AtomicUsize::new(0),
+        }
+    }
+    pub fn stats(&self) -> ThumbnailCacheStats {
+        ThumbnailCacheStats {
+            hits: self.hits.load(Ordering::Relaxed),
+            misses: self.misses.load(Ordering::Relaxed),
         }
     }
     fn key(path: &Path, info: &ImageInfo, edge: u32) -> Vec<u8> {
@@ -197,6 +212,7 @@ impl ImageBackend for CachedThumbnails {
         if let Some(image) = cache.as_ref().and_then(|p| Self::read(p, &key, info, edge)) {
             cancel.check()?;
             if stamp(fs::metadata(path).map_err(io_error)?) == info.stamp {
+                self.hits.fetch_add(1, Ordering::Relaxed);
                 return Ok(image);
             }
             return Err(RasteraError::new(
@@ -204,6 +220,7 @@ impl ImageBackend for CachedThumbnails {
                 "El original cambió durante la carga",
             ));
         }
+        self.misses.fetch_add(1, Ordering::Relaxed);
         let image = self.source.decode(path, info, edge, cancel)?;
         cancel.check()?;
         if let Some(cache) = cache {

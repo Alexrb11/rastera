@@ -11,6 +11,7 @@ pub struct MemoryBudget(Arc<Budget>);
 struct Budget {
     limit: u64,
     used: AtomicU64,
+    peak: AtomicU64,
     foreground_loading: AtomicBool,
 }
 
@@ -19,12 +20,19 @@ impl MemoryBudget {
         Self(Arc::new(Budget {
             limit,
             used: AtomicU64::new(0),
+            peak: AtomicU64::new(0),
             foreground_loading: AtomicBool::new(false),
         }))
     }
 
     pub fn used(&self) -> u64 {
         self.0.used.load(Ordering::Acquire)
+    }
+    pub fn peak(&self) -> u64 {
+        self.0.peak.load(Ordering::Acquire)
+    }
+    pub fn limit(&self) -> u64 {
+        self.0.limit
     }
 
     pub fn set_foreground_loading(&self, loading: bool) {
@@ -68,6 +76,7 @@ impl MemoryBudget {
                 Err(current) => used = current,
             }
         }
+        self.0.peak.fetch_max(used + bytes, Ordering::AcqRel);
         Ok(MemoryLease {
             budget: self.clone(),
             bytes,
@@ -110,9 +119,12 @@ mod tests {
         lease.shrink_to(30);
         let other = budget.reserve(70).unwrap();
         assert_eq!(budget.used(), 100);
+        assert_eq!(budget.peak(), 100);
         drop(lease);
         drop(other);
         assert_eq!(budget.used(), 0);
+        assert_eq!(budget.peak(), 100);
+        assert_eq!(budget.limit(), 100);
     }
 
     #[test]

@@ -2,6 +2,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Condvar, Mutex},
     thread::{self, JoinHandle},
+    time::{Duration, Instant},
 };
 
 use crossbeam_channel::{Receiver, TrySendError, bounded};
@@ -50,10 +51,19 @@ impl LoadedImage {
 }
 
 pub struct ImageLoader {
+    stats: Arc<Mutex<ImageLoadStats>>,
     state: Arc<(Mutex<State>, Condvar)>,
     results: Receiver<LoadedImage>,
     worker: Option<JoinHandle<()>>,
     budget: MemoryBudget,
+}
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ImageLoadStats {
+    pub completed: u64,
+    pub failed: u64,
+    pub cancelled: u64,
+    /// Includes header inspection, waiting for a reservation, decoding and conversion.
+    pub last_elapsed: Duration,
 }
 
 impl ImageLoader {
@@ -63,6 +73,8 @@ impl ImageLoader {
         wake: Arc<dyn Fn() + Send + Sync>,
     ) -> Self {
         let state = Arc::new((Mutex::new(State::default()), Condvar::new()));
+        let stats = Arc::new(Mutex::new(ImageLoadStats::default()));
+        let worker_stats = stats.clone();
         let (tx, results) = bounded(1);
         let worker_state = state.clone();
         let worker_budget = budget.clone();
@@ -83,6 +95,7 @@ impl ImageLoader {
                     request
                 };
                 while discard.try_recv().is_ok() {}
+                let started = Instant::now();
                 let operation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     request.cancel.check()?;
                     let info = backend.inspect(&request.path)?;
@@ -128,6 +141,15 @@ impl ImageLoader {
                     result,
                     _lease: lease,
                 };
+                {
+                    let mut stats = worker_stats.lock().unwrap_or_else(|e| e.into_inner());
+                    stats.last_elapsed = started.elapsed();
+                    match &event.result {
+                        Ok(_) => stats.completed += 1,
+                        Err(error) if error.kind == ErrorKind::Cancelled => stats.cancelled += 1,
+                        Err(_) => stats.failed += 1,
+                    }
+                }
                 match tx.try_send(event) {
                     Ok(()) => {}
                     Err(TrySendError::Full(event)) => {
@@ -140,6 +162,7 @@ impl ImageLoader {
             }
         });
         Self {
+            stats,
             state,
             results,
             worker: Some(worker),
@@ -196,6 +219,9 @@ impl ImageLoader {
 
     pub fn reserved_bytes(&self) -> u64 {
         self.budget.used()
+    }
+    pub fn stats(&self) -> ImageLoadStats {
+        *self.stats.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -315,6 +341,7 @@ mod tests {
         assert!(budget.reserve(9).is_err());
         drop(resident);
         assert_eq!(budget.used(), 0);
+        assert_eq!(loader.stats().completed, 1);
         loader.request_original(
             2,
             "image.png".into(),
@@ -329,6 +356,7 @@ mod tests {
             ErrorKind::Changed
         );
         assert_eq!(budget.used(), 0);
+        assert_eq!(loader.stats().failed, 1);
     }
     #[test]
     fn closing_original_load_waiting_for_memory_releases_the_worker() {

@@ -1,5 +1,7 @@
 # Usar Rastera
 
+Rendimiento abre los contadores de memoria, cargas y caché de esta sesión. Consulta [cómo medir recursos y tiempos](performance.md) para distinguir las estimaciones internas de la RAM del proceso y repetir las mediciones.
+
 ## Navegar y seleccionar
 
 Abre una carpeta desde el botón, la ruta, arrastrándola a la ventana o pasándola como argumento de inicio. La cuadrícula carga las miniaturas visibles; no recorre subcarpetas.

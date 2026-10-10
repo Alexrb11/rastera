@@ -16,6 +16,7 @@ struct Thumbnail {
 }
 
 pub struct ThumbnailGrid {
+    backend: Arc<CachedThumbnails>,
     loader: ImageLoader,
     cache: HashMap<PathBuf, Thumbnail>,
     pending: Option<PathBuf>,
@@ -28,12 +29,14 @@ pub struct ThumbnailGrid {
 impl ThumbnailGrid {
     pub fn new(ctx: &egui::Context, budget: MemoryBudget) -> Self {
         let ctx = ctx.clone();
+        let backend = Arc::new(CachedThumbnails::default());
         Self {
             loader: ImageLoader::new(
-                Arc::new(CachedThumbnails::default()),
+                backend.clone(),
                 budget,
                 Arc::new(move || ctx.request_repaint()),
             ),
+            backend,
             cache: HashMap::new(),
             pending: None,
             generation: 0,
@@ -53,6 +56,15 @@ impl ThumbnailGrid {
 
     pub fn busy(&self) -> bool {
         self.pending.is_some()
+    }
+    pub fn diagnostics(
+        &self,
+    ) -> (
+        usize,
+        rastera_engine::ImageLoadStats,
+        rastera_adapters::ThumbnailCacheStats,
+    ) {
+        (self.cache.len(), self.loader.stats(), self.backend.stats())
     }
 
     pub fn receive(&mut self, ctx: &egui::Context) {

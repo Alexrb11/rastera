@@ -10,6 +10,6 @@ pub use catalog::{SqliteCatalog, catalog_path};
 mod batch;
 pub use batch::LocalBatch;
 mod thumbnails;
-pub use thumbnails::CachedThumbnails;
+pub use thumbnails::{CachedThumbnails, ThumbnailCacheStats};
 mod color;
 mod recovery;

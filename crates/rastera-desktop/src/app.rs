@@ -17,6 +17,7 @@ struct Preview {
 }
 
 pub struct RasteraApp {
+    diagnostics_open: bool,
     detail: crate::detail::DetailView,
     batch: crate::batch::Batch,
     budget: MemoryBudget,
@@ -62,6 +63,7 @@ impl RasteraApp {
             Arc::new(move || ctx.request_repaint()),
         );
         let mut app = Self {
+            diagnostics_open: false,
             detail: crate::detail::DetailView::new(&cc.egui_ctx, budget.clone()),
             batch: crate::batch::Batch::new(&cc.egui_ctx, budget.clone()),
             budget,
@@ -91,6 +93,12 @@ impl RasteraApp {
         };
         if let Some(path) = initial {
             app.open(path);
+        }
+        #[cfg(feature = "capture")]
+        if std::env::var_os("RASTERA_CAPTURE_PANEL").as_deref()
+            == Some(std::ffi::OsStr::new("performance"))
+        {
+            app.diagnostics_open = true;
         }
         app
     }
@@ -396,6 +404,9 @@ impl RasteraApp {
 
     fn header(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
+            if ui.button("Rendimiento").clicked() {
+                self.diagnostics_open = true;
+            }
             ui.add_space(12.0);
             ui.label(RichText::new("RASTERA").size(24.0).strong().color(ACCENT));
             ui.add_space(16.0);
@@ -782,6 +793,24 @@ impl eframe::App for RasteraApp {
             self.preview.as_ref().map(|preview| &preview.info),
         );
         self.batch.show(&ctx);
+        if self.diagnostics_open {
+            let (tiles, full) = self.detail.diagnostics();
+            let (textures, thumbs, cache) = self.grid.diagnostics();
+            let preview = self.loader.stats();
+            egui::Window::new("Rendimiento").default_width(620.0).open(&mut self.diagnostics_open).show(&ctx, |ui| {
+                ui.label(format!("Reservas CPU: {:.1} MiB · máximo {:.1} · límite {:.0}", self.budget.used() as f64/1048576.0, self.budget.peak() as f64/1048576.0, self.budget.limit() as f64/1048576.0));
+                ui.label("Las reservas son estimaciones de buffers, no la RAM total del proceso.");
+                let preview_bytes = self.preview.as_ref().map_or(0.0, |p| p.size.x * p.size.y * 4.0);
+                ui.label(format!("Píxeles GPU: vista {:.1} MiB · detalle {:.1} MiB · {} miniaturas", preview_bytes/1048576.0, tiles as f64/1048576.0, textures));
+                ui.label("Estos tamaños excluyen sobrecostes y copias del controlador gráfico.");
+                for (name, stats) in [("Vista previa",preview), ("Detalle",full), ("Miniaturas",thumbs)] {
+                    ui.label(format!("{name}: {} completadas · {} fallidas · {} canceladas · última {:.2} ms",
+                        stats.completed, stats.failed, stats.cancelled, stats.last_elapsed.as_secs_f64()*1000.0));
+                }
+                ui.label(format!("Caché en disco: {} aciertos · {} decodificaciones solicitadas",cache.hits,cache.misses));
+                ui.label("Los tiempos incluyen inspección, espera de memoria y procesamiento, hasta encolar el resultado. Los contadores abarcan esta sesión.");
+            });
+        }
         if let Some(error) = &self.catalog.error {
             ui.colored_label(Color32::LIGHT_RED, error);
         }

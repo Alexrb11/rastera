@@ -5,6 +5,14 @@ mod detail;
 mod grid;
 
 fn main() -> eframe::Result {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--build-info")) {
+        println!(
+            "{{\"version\":\"{}\",\"capture\":{}}}",
+            env!("CARGO_PKG_VERSION"),
+            cfg!(feature = "capture")
+        );
+        return Ok(());
+    }
     let initial = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
