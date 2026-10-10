@@ -16,6 +16,8 @@ struct Preview {
 }
 
 pub struct RasteraApp {
+    grid: crate::grid::ThumbnailGrid,
+    grid_view: bool,
     loader: ImageLoader,
     scanner: FolderScanner,
     folder_generation: u64,
@@ -41,9 +43,11 @@ impl RasteraApp {
     pub fn new(cc: &eframe::CreationContext<'_>, initial: Option<PathBuf>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
         let ctx = cc.egui_ctx.clone();
+        let budget = MemoryBudget::new(CPU_IMAGE_BUDGET);
+        let grid = crate::grid::ThumbnailGrid::new(&cc.egui_ctx, budget.clone());
         let loader = ImageLoader::new(
             Arc::new(LocalImages),
-            MemoryBudget::new(CPU_IMAGE_BUDGET),
+            budget,
             Arc::new(move || ctx.request_repaint()),
         );
         let ctx = cc.egui_ctx.clone();
@@ -52,6 +56,8 @@ impl RasteraApp {
             Arc::new(move || ctx.request_repaint()),
         );
         let mut app = Self {
+            grid,
+            grid_view: false,
             loader,
             scanner,
             folder_generation: 0,
@@ -79,6 +85,8 @@ impl RasteraApp {
     }
 
     fn open(&mut self, path: PathBuf) {
+        self.grid.reset();
+        self.grid_view = true;
         self.folder_generation += 1;
         self.generation += 1;
         self.loader.cancel();
@@ -134,6 +142,7 @@ impl RasteraApp {
     }
 
     fn receive(&mut self, ctx: &egui::Context) {
+        self.grid.receive(ctx);
         if let Some(receiver) = &self.dialog {
             match receiver.try_recv() {
                 Ok(path) => {
@@ -154,6 +163,7 @@ impl RasteraApp {
             }
             match event.update {
                 FolderUpdate::File(path) => {
+                    self.grid_view = false;
                     self.folder = None;
                     self.open_image(path);
                 }
@@ -299,7 +309,11 @@ impl RasteraApp {
                 std::process::exit(1);
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        } else if !self.capture_requested && !self.loading && !self.folder_loading {
+        } else if !self.capture_requested
+            && !self.loading
+            && !self.folder_loading
+            && !self.grid.busy()
+        {
             self.capture_requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }
@@ -318,6 +332,15 @@ impl RasteraApp {
                 }
                 if ui.button("Abrir carpeta").clicked() {
                     self.pick_path(ui.ctx(), true);
+                }
+                if self.folder.is_some() {
+                    ui.selectable_value(&mut self.grid_view, true, "Cuadrícula");
+                    ui.selectable_value(&mut self.grid_view, false, "Visor");
+                    if ui.button("Actualizar").clicked()
+                        && let Some(folder) = self.folder.clone()
+                    {
+                        self.open(folder);
+                    }
                 }
             });
         });
@@ -592,13 +615,20 @@ impl eframe::App for RasteraApp {
                 egui::vec2(ui.available_width(), height),
                 Layout::top_down(Align::Min),
                 |ui| {
-                    self.viewer(ui);
+                    if self.grid_view && !self.entries.is_empty() {
+                        if let Some(path) = self.grid.show(ui, &self.entries, self.loading) {
+                            self.open_image(path);
+                            self.grid_view = false;
+                        }
+                    } else {
+                        self.viewer(ui);
+                    }
                 },
             );
         });
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new(if self.loading || self.folder_loading {
+                RichText::new(if self.loading || self.folder_loading || self.grid.busy() {
                     "Cargando…"
                 } else {
                     "Listo"

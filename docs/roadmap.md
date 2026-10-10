@@ -2,7 +2,7 @@
 
 Este plan lleva la arquitectura desde el prototipo hasta una primera aplicación útil en Windows. Las fases se completan mediante criterios observables, no por una fecha estimada.
 
-El avance inicial incluye workspace, CI, visor nativo y navegación progresiva por carpetas con lista virtualizada. Hay pruebas del motor y los adaptadores, y una comprobación visual del renderizado en Windows. Las fases siguen abiertas: faltan, entre otras tareas, validación de accesibilidad, carga de resolución completa, cuadrícula de miniaturas, catálogo y lotes.
+El avance inicial incluye workspace, CI, visor nativo, navegación progresiva por carpetas, cuadrícula virtualizada y selección múltiple. Las miniaturas tienen una caché LRU acotada y un trabajador cancelable que comparte memoria con el visor. Se ha comprobado el renderizado en Windows. Las fases siguen abiertas: faltan validación de accesibilidad, carga de resolución completa en el visor, mediciones con bibliotecas grandes, catálogo y lotes.
 
 ## Fase 1 Base técnica y visor
 

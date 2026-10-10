@@ -8,7 +8,9 @@ Rastera tendrá una interfaz de escritorio nativa y trabajará sobre carpetas lo
 
 El primer visor está implementado: abre JPEG, PNG y WebP estáticos mediante diálogo, ruta, arrastre o argumento de inicio. Incluye zoom, desplazamiento, orientación EXIF, transparencia y detalles de la imagen. La carga se ejecuta en un trabajador con cancelación y presupuesto de memoria.
 
-La arquitectura describe también las siguientes fases. El catálogo, las etiquetas, las miniaturas persistentes y las operaciones por lotes todavía están pendientes. No hay una comparación de rendimiento publicada.
+La cuadrícula dibuja únicamente las filas visibles, carga miniaturas de 256 píxeles y ofrece selección múltiple con Ctrl+clic, selección de toda la carpeta y apertura con doble clic. El botón Actualizar vuelve a leer la carpeta e invalida las miniaturas. Su caché LRU mantiene como máximo 128 texturas (32 MiB de píxeles en GPU), además de la vista previa. El visor tiene preferencia al solicitar buffers; los trabajadores comparten el presupuesto de memoria. La caché todavía no se guarda en disco.
+
+El catálogo y las operaciones por lotes están pendientes. No hay una comparación de rendimiento publicada.
 
 También se pueden abrir carpetas mediante diálogo, ruta, arrastre o argumento de inicio. La lectura emite páginas progresivamente y la lista dibuja únicamente las filas visibles. Las flechas permiten pasar al archivo anterior o siguiente. El alcance inicial es una carpeta sin recursión, con un límite de 10.000 archivos y 16 MiB de rutas; los enlaces se excluyen. La lista se ordena por ruta al terminar el escaneo. Una extensión compatible no garantiza que su contenido sea una imagen válida.
 
