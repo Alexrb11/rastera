@@ -10,7 +10,9 @@ La selección se mantiene al cambiar filtros; el contador incluye imágenes sele
 
 Doble clic abre el visor. Usa Cuadrícula para volver, las flechas para navegar, la rueda para ampliar, el arrastre para desplazar y Home para ajustar. El zoom trabaja sobre una vista previa de hasta 4.096 píxeles; la exportación usa el original.
 
-Actualizar vuelve a leer la carpeta y limpia caché y selección. Esta acción refleja cambios externos.
+Actualizar vuelve a leer la carpeta y limpia las texturas y la selección. Las miniaturas persistentes se invalidan por ruta, tamaño, fecha de modificación, resolución y versión del procesamiento. Esta señal detecta cambios habituales, pero no modificaciones que conserven tamaño y fecha.
+
+La caché de miniaturas está junto al catálogo, en thumbnails-v1. Se puede borrar con la aplicación cerrada sin perder favoritos ni etiquetas. Su objetivo es 2 GiB, con limpieza cada 64 peticiones y un margen máximo de unos 16 MiB de nuevas miniaturas por trabajador entre limpiezas. Se expulsan las entradas más antiguas por fecha de escritura. Las entradas dañadas se regeneran; si la caché falla, la imagen se carga desde el original.
 
 ## Organizar
 

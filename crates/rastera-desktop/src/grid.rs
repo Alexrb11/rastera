@@ -1,5 +1,5 @@
 use eframe::egui::{self, Color32, Rect, Sense, TextureHandle, Vec2};
-use rastera_adapters::LocalImages;
+use rastera_adapters::CachedThumbnails;
 use rastera_core::FolderEntry;
 use rastera_engine::{ImageLoader, memory::MemoryBudget};
 use std::{
@@ -30,7 +30,7 @@ impl ThumbnailGrid {
         let ctx = ctx.clone();
         Self {
             loader: ImageLoader::new(
-                Arc::new(LocalImages),
+                Arc::new(CachedThumbnails::default()),
                 budget,
                 Arc::new(move || ctx.request_repaint()),
             ),

@@ -153,6 +153,8 @@ El cierre deja de admitir tareas, cancela las pendientes y completa o registra l
 
 ## Memoria y cachés
 
+Implementado: miniaturas RGBA de hasta 256 píxeles persistentes bajo el directorio de datos, con registros versionados, clave completa y checksum. La clave incluye la ruta sin pérdida, tamaño/fecha del original, resolución y versión del pipeline. La caché se consulta y escribe en el trabajador de miniaturas; nunca en el hilo de UI. Los originales siguen inspeccionándose y la reserva de memoria conserva la estimación de decodificación completa incluso en un acierto. Las escrituras usan temporales y los fallos de caché permiten cargar el original. La limpieza amortizada tiene objetivo de 2 GiB y hasta 16 MiB de margen por trabajador; ordena por fecha de escritura, sin tocar archivos ajenos ni enlaces. No constituye un límite compartido estricto entre varias instancias.
+
 Se presupuestan los píxeles decodificados, buffers intermedios, resultados pendientes y cachés CPU bajo un límite compartido. Las texturas GPU y la caché en disco tienen presupuestos separados. Evitar dobles copias innecesarias importa tanto como limitar la cantidad de tareas.
 
 | Recurso | Valor inicial propuesto | Política |

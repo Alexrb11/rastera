@@ -9,3 +9,5 @@ mod catalog;
 pub use catalog::{SqliteCatalog, catalog_path};
 mod batch;
 pub use batch::LocalBatch;
+mod thumbnails;
+pub use thumbnails::CachedThumbnails;
