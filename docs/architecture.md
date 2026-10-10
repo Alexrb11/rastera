@@ -2,6 +2,14 @@
 
 Las secciones de implementación actual describen el código disponible. El resto del documento mantiene el diseño objetivo y puede incluir capacidades todavía pendientes.
 
+## Implementación actual de la interfaz
+
+La ventana compone paneles independientes de egui: menús y ubicación arriba, estado abajo, Propiedades ajustable a la derecha y Biblioteca o Visor en el centro. El área central usa el espacio restante sin fijar una altura de trabajo. Bajo 980 puntos, Propiedades pasa a una ventana desplazable. En Windows se utiliza Segoe UI si está instalada; las otras plataformas conservan la fuente de respaldo de egui.
+
+Biblioteca separa filtros de acciones de selección. El catálogo recalcula resultados y orden por nombre cuando cambian los datos; no ordena durante cada frame. El visor abierto desde Biblioteca usa esa misma lista filtrada y ordenada. La selección conserva las entradas ocultas al filtrar y comunica su número al exportar. Marcar Favorita desde Propiedades reutiliza las escrituras asíncronas y conserva las etiquetas. Las dimensiones de las miniaturas proceden de los píxeles ya orientados.
+
+La exportación muestra configuración, revisión y resultados con botones fuera del contenido desplazable. Las opciones se contraen al revisar y quedan bloqueadas mientras se procesa o conserva un resultado. Esc oculta las ventanas auxiliares sin cancelar el lote. Las rutas visibles omiten el prefijo técnico de Windows; la identidad de archivos y las operaciones siguen utilizando PathBuf sin alterar su representación.
+
 ## Implementación actual de los lotes y la memoria
 
 El motor tiene trabajadores de vista previa, detalle completo, miniaturas y exportación, además de los trabajadores de escaneo y catálogo. No hay todavía un pool central adaptativo. Las colas de resultados de imágenes admiten un elemento y retienen su reserva hasta entregarlo a la UI; el progreso del lote admite cuatro eventos.

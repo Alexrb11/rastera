@@ -15,6 +15,7 @@
     ]
   },
   "screenshots": {
+    "implementation_commit": "5f932e9",
     "source": "Renderizado nativo de Rastera con la característica opcional capture",
     "preset": "Catálogo aislado de demostración: taza y cuenco favoritos y etiquetados cerámica, aprobada; jarrón cerámica, revisar.",
     "pixel_size": [

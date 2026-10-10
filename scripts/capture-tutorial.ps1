@@ -1,13 +1,15 @@
 param(
     [string]$Executable = 'target/debug/rastera.exe',
     [string]$Python = 'python',
-    [string]$ExportDirectory = 'work/tutorial/Para-web'
+    [string]$ExportDirectory = 'work/tutorial/Para-web',
+    [string]$CaptureDirectory = 'docs/tutorial/capturas',
+    [string]$ViewportSize = '1180x780'
 )
 $ErrorActionPreference = 'Stop'
 $taskRepo = Split-Path $PSScriptRoot -Parent
 $taskExe = Join-Path $taskRepo $Executable
 $taskExamples = Join-Path $taskRepo 'docs/tutorial/ejemplos'
-$taskScreenshots = Join-Path $taskRepo 'docs/tutorial/capturas'
+$taskScreenshots = Join-Path $taskRepo $CaptureDirectory
 $taskExport = [IO.Path]::GetFullPath((Join-Path $taskRepo $ExportDirectory))
 $taskData = Join-Path $taskRepo ('work/tutorial/catalog-' + [Guid]::NewGuid().ToString('N'))
 $taskInfo = & $taskExe --build-info | ConvertFrom-Json
@@ -23,8 +25,8 @@ try {
     foreach ($taskScene in 'biblioteca','visor','organizacion','busqueda','configuracion','revision','resultados') {
         foreach ($taskName in $taskNames) {Remove-Item -LiteralPath ("Env:\" + $taskName) -ErrorAction SilentlyContinue}
         $env:LOCALAPPDATA = $taskData
-        $env:RASTERA_CAPTURE_TO = Join-Path $taskScreenshots "$taskScene.png"
-        $env:RASTERA_CAPTURE_SIZE = '1180x780'
+        $env:RASTERA_CAPTURE_TO = Join-Path $taskData "$taskScene.png"
+        $env:RASTERA_CAPTURE_SIZE = $ViewportSize
         if ($taskScene -eq 'biblioteca') {$env:RASTERA_CAPTURE_SELECTION = '1'}
         if ($taskScene -eq 'organizacion') {$env:RASTERA_CAPTURE_PANEL = 'organization'}
         if ($taskScene -eq 'busqueda') {$env:RASTERA_CAPTURE_FILTER = 'aprobada'}
@@ -38,6 +40,7 @@ try {
         if (!$taskProcess.WaitForExit(30000)) {Stop-Process -Id $taskProcess.Id; throw "Captura agotada: $taskScene"}
         if ($taskProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $env:RASTERA_CAPTURE_TO)) {throw "Captura falló: $taskScene"}
         $taskProcess.Dispose()
+        [IO.File]::Move($env:RASTERA_CAPTURE_TO, (Join-Path $taskScreenshots "$taskScene.png"), $true)
         Write-Output "Captura lista: $taskScene"
     }
     Write-Output "Copias reales del lote: $taskExport"

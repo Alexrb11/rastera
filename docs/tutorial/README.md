@@ -21,9 +21,9 @@ Desde la raíz del repositorio, con Rust y Python disponibles:
 
 El destino debe ser nuevo; el script no borra ni reemplaza exportaciones anteriores. Las capturas se regeneran en docs/tutorial/capturas. Para actualizar las copias de referencia, copia después los tres JPEG del destino a docs/tutorial/copias.
 
-El script usa un catálogo aislado en work/tutorial, restaura las variables de entorno y solo termina procesos que él mismo ha iniciado si agotan el plazo de captura. Requiere Windows. -Python permite indicar el ejecutable de Python; -Executable permite elegir el binario, relativo a la raíz del repositorio.
+El script usa un catálogo aislado en work/tutorial, restaura las variables de entorno y solo termina procesos que él mismo ha iniciado si agotan el plazo de captura. Requiere Windows. -Python permite indicar el ejecutable de Python; -Executable permite elegir el binario, relativo a la raíz del repositorio. -CaptureDirectory cambia la carpeta de capturas y -ViewportSize permite verificar otros tamaños, por ejemplo 760x480.
 
-La característica de desarrollo capture está deshabilitada por defecto. RASTERA_CAPTURE_PANEL=organization abre el editor. RASTERA_CAPTURE_TUTORIAL=configure o review prepara la receta de la guía; results ejecuta el plan y exporta las copias al destino explícito. review y results desplazan el panel hasta la revisión o el resultado. Estas opciones son para generar documentación y solo deben usarse con carpetas de prueba.
+La característica de desarrollo capture está deshabilitada por defecto. RASTERA_CAPTURE_PANEL=organization abre el editor. RASTERA_CAPTURE_TUTORIAL=configure muestra la receta antes de preparar el plan; review lo prepara y muestra la revisión; results ejecuta el plan y exporta las copias al destino explícito. review y results desplazan el panel hasta la revisión o el resultado. Estas opciones son para generar documentación y solo deben usarse con carpetas de prueba.
 
 ## Generar la entrega
 

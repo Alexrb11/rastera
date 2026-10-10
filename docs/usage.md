@@ -1,32 +1,32 @@
 # Usar Rastera
 
-La interfaz usa barras compactas de Archivo, Ver y Herramientas. Biblioteca sirve para seleccionar y filtrar; Visor, para examinar una imagen. Propiedades muestra dimensiones, tamaño, favorito y etiquetas en un panel lateral que puedes ocultar. En ventanas estrechas se abre como una ventana aparte.
+La interfaz separa los menús Archivo, Ver, Herramientas y Ayuda, la ubicación y las herramientas de Biblioteca. Biblioteca sirve para seleccionar, filtrar y ordenar; Visor, para examinar una imagen. Propiedades muestra dimensiones, tamaño, favorito y etiquetas en un panel lateral que puedes ocultar o ajustar arrastrando su borde. En ventanas de menos de 980 puntos se abre como una ventana aparte. Ayuda → Atajos de teclado, o F1, muestra las combinaciones disponibles.
 
 Herramientas → Diagnóstico de rendimiento abre los contadores de memoria, cargas y caché de esta sesión. Consulta [cómo medir recursos y tiempos](performance.md) para distinguir las estimaciones internas de la RAM del proceso y repetir las mediciones.
 
 ## Navegar y seleccionar
 
-Abre una carpeta desde Archivo, el botón, Ctrl+Shift+O, arrastrándola a la ventana o pasándola como argumento de inicio. Archivo → Abrir una ruta y la barra de ubicación permiten introducir una ruta. Ctrl+O abre una imagen. La cuadrícula carga las miniaturas visibles; no recorre subcarpetas.
+Abre una carpeta desde Archivo, el botón, Ctrl+Shift+O, arrastrándola a la ventana o pasándola como argumento de inicio. Archivo → Abrir una ruta, F4 y la barra de ubicación permiten introducir una ruta; se aceptan rutas pegadas entre comillas. Ctrl+O abre una imagen. Ver carpeta permite explorar la carpeta de un archivo abierto directamente. La flecha hacia arriba abre la carpeta superior. La cuadrícula carga las miniaturas visibles; no recorre subcarpetas.
 
-Un clic selecciona una imagen y actualiza sus propiedades. Ctrl+clic añade o retira imágenes. Shift+clic selecciona un rango según el orden visible; Ctrl+Shift+clic añade ese rango a la selección. Seleccionar todo y Ctrl+A actúan sobre los resultados del filtro. Deseleccionar y Esc retiran todas las seleccionadas. El menú contextual permite abrir en el visor y copiar la ruta. Las miniaturas ofrecen tres tamaños.
+Un clic selecciona una imagen y actualiza sus propiedades. Ctrl+clic añade o retira imágenes. Shift+clic selecciona un rango según el orden visible; Ctrl+Shift+clic añade ese rango a la selección. Selección → Seleccionar todo y Ctrl+A actúan sobre los resultados del filtro. Selección → Deseleccionar y Esc retiran todas las seleccionadas. El menú contextual permite abrir en el visor, copiar la ruta, organizar una imagen y exportar la selección. Al abrirlo sobre una imagen no seleccionada, esta pasa a ser la selección. Las miniaturas ofrecen tres tamaños, nombre, formato y dimensiones orientadas, además de una estrella para los favoritos. Nombre A–Z / Nombre Z–A cambia el orden visible.
 
 La selección se mantiene al cambiar filtros; el contador incluye imágenes seleccionadas que hayan quedado ocultas y muestra cuántas están fuera del filtro. Exportar selección incluye todas ellas. Restablecer limpia búsqueda, favorito y formato; no borra la selección. Cuando no hay coincidencias se ofrece restablecer los filtros.
 
-Doble clic abre el visor. Usa Biblioteca o Esc para volver, las flechas para navegar, la rueda para ampliar, el arrastre para desplazar y Home para ajustar. Los botones anterior y siguiente se desactivan en los extremos. Se muestra primero una vista previa de hasta 4.096 píxeles. Al ampliar por encima de su detalle, se vuelve a decodificar el original en un trabajador y se conservan sus píxeles normalizados por EXIF y color.
+Doble clic abre el visor. Usa Biblioteca o Esc para volver, las flechas para navegar, la rueda para ampliar, el arrastre para desplazar y Home para ajustar. Al entrar desde Biblioteca, la navegación sigue el filtro y el orden visible. Los botones anterior y siguiente se desactivan en los extremos. Se muestra primero una vista previa de hasta 4.096 píxeles. Al ampliar por encima de su detalle, se vuelve a decodificar el original en un trabajador y se conservan sus píxeles normalizados por EXIF y color.
 
 100% representa un píxel de imagen por píxel físico de pantalla, también con escalado de Windows. El zoom con rueda mantiene el punto bajo el cursor. Mientras se carga el detalle o si este falla, se conserva la vista previa; el inspector muestra el estado. La carga completa respeta los límites y el presupuesto compartido, por lo que algunas imágenes se rechazan por memoria. Se comprueba tamaño/fecha respecto a la vista inicial; no se detectan cambios que conserven ambos.
 
 La GPU recibe solo mosaicos visibles, con un máximo de 60 entradas de 512 píxeles más bordes de muestreo. Si una ventana necesita más mosaicos, las regiones restantes usan la vista previa. Ajustar, Home, doble clic para ajustar, Cuadrícula, navegar o iniciar un lote liberan el detalle completo. Durante un lote se conserva la vista previa para dejar memoria al procesador.
 
-Actualizar vuelve a leer la carpeta y limpia las texturas y la selección. Las miniaturas persistentes se invalidan por ruta, tamaño, fecha de modificación, resolución y versión del procesamiento. Esta señal detecta cambios habituales, pero no modificaciones que conserven tamaño y fecha.
+Actualizar, o F5, vuelve a leer la carpeta y limpia las texturas y la selección. Las miniaturas persistentes se invalidan por ruta, tamaño, fecha de modificación, resolución y versión del procesamiento. Esta señal detecta cambios habituales, pero no modificaciones que conserven tamaño y fecha.
 
 La caché de miniaturas está junto al catálogo, en thumbnails-v1. Se puede borrar con la aplicación cerrada sin perder favoritos ni etiquetas. Su objetivo es 2 GiB. Se revisa al comenzar, después de escribir 16 MiB de registros y al atender una petición si han pasado 60 segundos desde la última revisión. Leer miniaturas guardadas no provoca recorridos por número de peticiones. El margen de escrituras entre revisiones es 16 MiB más un registro como máximo por trabajador; varias instancias no comparten un límite estricto. Solo se ordenan y expulsan las entradas antiguas cuando se supera la cuota. Las entradas dañadas se regeneran; si la caché falla, la imagen se carga desde el original. La revisión comprueba la cancelación mientras enumera y elimina.
 
 ## Organizar
 
-Selecciona una imagen y pulsa Propiedades → Editar organización. Marca Favorita, escribe etiquetas separadas por comas y pulsa Guardar cambios. Se admiten hasta 32 etiquetas de 64 caracteres; se recortan espacios y se eliminan duplicados. El panel muestra las etiquetas y las miniaturas identifican los favoritos.
+Selecciona una imagen y pulsa Propiedades → Editar organización. Puedes marcar Favorita directamente en Propiedades. Marca Favorita, escribe etiquetas separadas por comas y pulsa Guardar cambios. Se admiten hasta 32 etiquetas de 64 caracteres; se recortan espacios y se eliminan duplicados. El panel muestra las etiquetas y las miniaturas identifican los favoritos.
 
-La búsqueda filtra por nombre o etiqueta sin distinguir mayúsculas. También puedes filtrar por favoritos y extensión de archivo. Los filtros actúan sobre la carpeta abierta.
+Ctrl+F enfoca la búsqueda, que filtra por nombre o etiqueta sin distinguir mayúsculas. También puedes filtrar por favoritos y extensión de archivo. Los filtros actúan sobre la carpeta abierta.
 
 En Windows, la organización vive en %LOCALAPPDATA%\Rastera\catalog.sqlite, junto a los archivos auxiliares de SQLite. No se escribe en las imágenes. Las rutas identifican las anotaciones; mover o renombrar un archivo externamente crea una ruta distinta.
 
@@ -34,14 +34,14 @@ Si falla el catálogo, la aplicación muestra el error y permite continuar usand
 
 ## Exportar
 
-1. En Biblioteca, selecciona las imágenes y pulsa Exportar selección. En Visor, Exportar imagen usa únicamente la imagen abierta, aunque quede una selección anterior en Biblioteca. Herramientas → Exportar imágenes usa la selección o, si está vacía, la imagen abierta.
+1. En Biblioteca, selecciona las imágenes y pulsa Exportar (N)… o Ctrl+E. En Visor, Exportar imagen usa únicamente la imagen abierta, aunque quede una selección anterior en Biblioteca. Ctrl+E y Herramientas → Exportar imágenes usan la selección en Biblioteca, o la imagen abierta en Visor; si la selección está vacía, usan la imagen abierta.
 2. Elige una carpeta de destino existente, distinta de la carpeta de los originales.
 3. Configura PNG, JPEG o WebP sin pérdidas, la rotación horaria y el límite del lado mayor. El redimensionado mantiene la proporción y nunca amplía.
 4. Para JPEG, elige la calidad y el fondo que reemplazará la transparencia.
 5. Lee y acepta la política de color y metadatos. Pulsa Revisar salidas para comprobar nombres y dimensiones.
 6. Pulsa Exportar N copias. Puedes seguir navegando mientras avanza el lote.
 
-El panel distingue Configurar, Revisar y Resultados. Los botones de revisar, exportar, cancelar y cerrar permanecen fuera del área desplazable. Cada fila muestra el estado de la copia y permite consultar la ruta completa al pasar el cursor. Al terminar se cuentan las publicadas y las no publicadas, y se puede preparar otro lote con las mismas imágenes.
+El panel distingue Configurar, Revisar y Resultados. Las opciones se despliegan durante la configuración y se contraen al revisar; los resultados conservan la receta usada. Esc oculta el panel sin cancelar el lote. Los botones de revisar, exportar, cancelar y cerrar permanecen fuera del área desplazable. Cada fila muestra el estado de la copia y permite consultar la ruta completa al pasar el cursor. Al terminar se cuentan las publicadas y las no publicadas, y se puede preparar otro lote con las mismas imágenes.
 
 La receta normaliza la orientación EXIF antes de rotar y redimensionar. Visor, miniaturas y lotes admiten SDR de 8 bits y convierten perfiles ICC RGB compatibles de matriz y curvas a sRGB antes de reducir la imagen. Sin ICC se asume sRGB. Las salidas eliminan metadatos originales, incluidos EXIF, GPS y XMP, y reciben un perfil sRGB nuevo. PNG y WebP conservan transparencia; JPEG se recodifica con el fondo indicado.
 
