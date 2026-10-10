@@ -1,0 +1,432 @@
+use std::{path::PathBuf, sync::Arc};
+
+use crossbeam_channel::{Receiver, bounded};
+use eframe::egui::{self, Align, Color32, Layout, Rect, RichText, Sense, TextureHandle, Vec2};
+use rastera_adapters::LocalImages;
+use rastera_core::{CPU_IMAGE_BUDGET, ErrorKind, ImageInfo};
+use rastera_engine::{ImageLoader, memory::MemoryBudget};
+
+const ACCENT: Color32 = Color32::from_rgb(138, 211, 174);
+const MUTED: Color32 = Color32::from_rgb(150, 165, 180);
+
+struct Preview {
+    texture: TextureHandle,
+    size: Vec2,
+    info: ImageInfo,
+}
+
+pub struct RasteraApp {
+    loader: ImageLoader,
+    generation: u64,
+    path: Option<PathBuf>,
+    path_input: String,
+    preview: Option<Preview>,
+    loading: bool,
+    error: Option<String>,
+    dialog: Option<Receiver<Option<PathBuf>>>,
+    zoom: Option<f32>,
+    current_scale: f32,
+    pan: Vec2,
+    #[cfg(feature = "capture")]
+    capture_requested: bool,
+}
+
+impl RasteraApp {
+    pub fn new(cc: &eframe::CreationContext<'_>, initial: Option<PathBuf>) -> Self {
+        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        let ctx = cc.egui_ctx.clone();
+        let loader = ImageLoader::new(
+            Arc::new(LocalImages),
+            MemoryBudget::new(CPU_IMAGE_BUDGET),
+            Arc::new(move || ctx.request_repaint()),
+        );
+        let mut app = Self {
+            loader,
+            generation: 0,
+            path: None,
+            path_input: String::new(),
+            preview: None,
+            loading: false,
+            error: None,
+            dialog: None,
+            zoom: None,
+            current_scale: 1.0,
+            pan: Vec2::ZERO,
+            #[cfg(feature = "capture")]
+            capture_requested: false,
+        };
+        if let Some(path) = initial {
+            app.open(path);
+        }
+        app
+    }
+
+    fn open(&mut self, path: PathBuf) {
+        self.generation += 1;
+        self.path_input = path.to_string_lossy().into_owned();
+        self.path = Some(path.clone());
+        self.preview = None;
+        self.error = None;
+        self.loading = true;
+        self.zoom = None;
+        self.pan = Vec2::ZERO;
+        self.loader.request(self.generation, path, 4_096);
+    }
+
+    fn pick_file(&mut self, ctx: &egui::Context) {
+        if self.dialog.is_some() {
+            return;
+        }
+        let (tx, rx) = bounded(1);
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let selected = rfd::FileDialog::new()
+                .set_title("Abrir imagen en Rastera")
+                .add_filter("Imágenes", &["jpg", "jpeg", "png", "webp"])
+                .pick_file();
+            let _ = tx.send(selected);
+            ctx.request_repaint();
+        });
+        self.dialog = Some(rx);
+    }
+
+    fn receive(&mut self, ctx: &egui::Context) {
+        if let Some(receiver) = &self.dialog {
+            match receiver.try_recv() {
+                Ok(path) => {
+                    self.dialog = None;
+                    if let Some(path) = path {
+                        self.open(path);
+                    }
+                }
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    self.dialog = None;
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => {}
+            }
+        }
+        while let Some(event) = self.loader.try_recv() {
+            if event.generation != self.generation {
+                continue;
+            }
+            self.loading = false;
+            match event.result {
+                Ok(image) => {
+                    let size = egui::vec2(image.width as f32, image.height as f32);
+                    let pixels = egui::ColorImage::from_rgba_unmultiplied(
+                        [image.width as usize, image.height as usize],
+                        &image.rgba,
+                    );
+                    self.preview = Some(Preview {
+                        texture: ctx.load_texture(
+                            format!("preview-{}", self.generation),
+                            pixels,
+                            egui::TextureOptions::LINEAR,
+                        ),
+                        size,
+                        info: image.info,
+                    });
+                }
+                Err(error) if error.kind == ErrorKind::Cancelled => {}
+                Err(error) => {
+                    self.error = Some(error.to_string());
+                }
+            }
+        }
+    }
+
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::O)) {
+            self.pick_file(ctx);
+        }
+        if !ctx.egui_wants_keyboard_input() {
+            if ctx.input(|input| input.key_pressed(egui::Key::Home)) {
+                self.zoom = None;
+                self.pan = Vec2::ZERO;
+            }
+            if ctx.input(|input| {
+                input.key_pressed(egui::Key::Plus) || input.key_pressed(egui::Key::Equals)
+            }) {
+                self.zoom =
+                    Some((self.zoom.unwrap_or(self.current_scale) * 1.25).clamp(0.05, 16.0));
+            }
+            if ctx.input(|input| input.key_pressed(egui::Key::Minus)) {
+                self.zoom =
+                    Some((self.zoom.unwrap_or(self.current_scale) / 1.25).clamp(0.05, 16.0));
+            }
+        }
+        let dropped = ctx.input(|input| {
+            input
+                .raw
+                .dropped_files
+                .first()
+                .map(|file| file.path().to_path_buf())
+        });
+        if let Some(path) = dropped {
+            self.open(path);
+        }
+    }
+
+    #[cfg(feature = "capture")]
+    fn capture(&mut self, ctx: &egui::Context) {
+        let Some(path) = std::env::var_os("RASTERA_CAPTURE_TO") else {
+            return;
+        };
+        let screenshot = ctx.input(|input| {
+            input.events.iter().find_map(|event| {
+                if let egui::Event::Screenshot { image, .. } = event {
+                    Some(image.clone())
+                } else {
+                    None
+                }
+            })
+        });
+        if let Some(image) = screenshot {
+            let bytes: Vec<u8> = image
+                .pixels
+                .iter()
+                .flat_map(|pixel| pixel.to_array())
+                .collect();
+            if let Err(error) = image::save_buffer(
+                PathBuf::from(path),
+                &bytes,
+                image.size[0] as u32,
+                image.size[1] as u32,
+                image::ColorType::Rgba8,
+            ) {
+                eprintln!("No se pudo guardar la captura: {error}");
+                std::process::exit(1);
+            }
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        } else if !self.capture_requested && !self.loading {
+            self.capture_requested = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+        }
+    }
+
+    fn header(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            ui.label(RichText::new("RASTERA").size(24.0).strong().color(ACCENT));
+            ui.add_space(16.0);
+            ui.label(RichText::new("Tus imágenes, a tu ritmo").color(MUTED));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add_space(12.0);
+                if ui.button("Abrir imagen · Ctrl+O").clicked() {
+                    self.pick_file(ui.ctx());
+                }
+            });
+        });
+        ui.add_space(6.0);
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut self.path_input)
+                    .hint_text("Ruta de la imagen…")
+                    .desired_width((ui.available_width() - 90.0).max(80.0)),
+            );
+            let enter =
+                response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            if (ui.button("Abrir").clicked() || enter) && !self.path_input.trim().is_empty() {
+                self.open(PathBuf::from(self.path_input.trim()));
+            }
+        });
+        ui.add_space(8.0);
+    }
+
+    fn inspector(&mut self, ui: &mut egui::Ui) {
+        ui.set_min_width(205.0);
+        ui.heading("Imagen");
+        ui.add_space(12.0);
+        if let Some(path) = &self.path {
+            ui.label(
+                RichText::new(path.file_name().unwrap_or_default().to_string_lossy()).strong(),
+            );
+            ui.add_space(8.0);
+        } else {
+            ui.label(RichText::new("Abre una imagen para ver sus detalles.").color(MUTED));
+        }
+        if let Some(preview) = &self.preview {
+            ui.label(format!(
+                "{} × {} px",
+                preview.info.width, preview.info.height
+            ));
+            ui.label(format!(
+                "{} · {:.1} MiB",
+                preview.info.kind,
+                preview.info.stamp.length as f64 / 1_048_576.0
+            ));
+            if preview.info.has_color_profile {
+                ui.add_space(8.0);
+                ui.label(
+                    RichText::new("Perfil ICC detectado. La gestión de color está pendiente.")
+                        .color(Color32::YELLOW),
+                );
+            }
+            if preview.size.x as u32 != preview.info.width
+                || preview.size.y as u32 != preview.info.height
+            {
+                ui.add_space(8.0);
+                ui.label(RichText::new("Puede incluir orientación EXIF o una vista reducida. Zoom sobre la vista previa.").color(MUTED));
+            }
+        }
+        ui.add_space(20.0);
+        ui.separator();
+        ui.add_space(12.0);
+        ui.label(RichText::new("CONTROLES").small().color(MUTED));
+        ui.label("Rueda: ampliar o reducir");
+        ui.label("Arrastrar: desplazar");
+        ui.label("Home: ajustar a ventana");
+        ui.label("+ / −: cambiar zoom");
+        ui.add_space(14.0);
+        ui.label(RichText::new("Los originales permanecen intactos.").color(MUTED));
+    }
+
+    fn viewer(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if ui.button("Ajustar").clicked() {
+                self.zoom = None;
+                self.pan = Vec2::ZERO;
+            }
+            if ui.button("100%").clicked() {
+                self.zoom = Some(1.0);
+                self.pan = Vec2::ZERO;
+            }
+            if ui.button("−").clicked() {
+                self.zoom =
+                    Some((self.zoom.unwrap_or(self.current_scale) / 1.25).clamp(0.05, 16.0));
+            }
+            if ui.button("+").clicked() {
+                self.zoom =
+                    Some((self.zoom.unwrap_or(self.current_scale) * 1.25).clamp(0.05, 16.0));
+            }
+            ui.label(self.zoom.map_or_else(
+                || "Ajuste a ventana".to_owned(),
+                |zoom| format!("{:.0}% de la vista previa", zoom * 100.0),
+            ));
+        });
+        ui.add_space(8.0);
+        let (canvas, response) = ui.allocate_exact_size(ui.available_size(), Sense::drag());
+        let painter = ui.painter().with_clip_rect(canvas);
+        painter.rect_filled(canvas, 8.0, Color32::from_rgb(16, 22, 29));
+        if let Some(preview) = &self.preview {
+            let fit = ((canvas.width() - 32.0) / preview.size.x)
+                .min((canvas.height() - 32.0) / preview.size.y)
+                .clamp(0.001, 1.0);
+            if response.hovered() {
+                let scroll = ui.input(|input| input.smooth_scroll_delta.y);
+                if scroll != 0.0 {
+                    self.zoom =
+                        Some((self.zoom.unwrap_or(fit) * (scroll * 0.003).exp()).clamp(0.05, 16.0));
+                }
+            }
+            if response.dragged() {
+                self.pan += response.drag_delta();
+            }
+            if response.double_clicked() {
+                self.zoom = None;
+                self.pan = Vec2::ZERO;
+            }
+            let size = preview.size * self.zoom.unwrap_or(fit);
+            self.current_scale = self.zoom.unwrap_or(fit);
+            let image_rect = Rect::from_center_size(canvas.center() + self.pan, size);
+            // Checkerboard only in the visible image area.
+            let checker = image_rect.intersect(canvas);
+            let step = 20.0;
+            for row in 0..(checker.height() / step).ceil() as i32 {
+                for column in 0..(checker.width() / step).ceil() as i32 {
+                    let rect = Rect::from_min_size(
+                        checker.min + egui::vec2(column as f32 * step, row as f32 * step),
+                        egui::vec2(step, step),
+                    )
+                    .intersect(checker);
+                    painter.rect_filled(
+                        rect,
+                        0.0,
+                        if (row + column) % 2 == 0 {
+                            Color32::from_gray(38)
+                        } else {
+                            Color32::from_gray(48)
+                        },
+                    );
+                }
+            }
+            painter.image(
+                preview.texture.id(),
+                image_rect,
+                Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+        } else {
+            let message = if self.loading {
+                "Cargando imagen…"
+            } else if self.error.is_some() {
+                "No se pudo abrir esta imagen"
+            } else {
+                "Arrastra una imagen aquí"
+            };
+            painter.text(
+                canvas.center() - egui::vec2(0.0, 12.0),
+                egui::Align2::CENTER_CENTER,
+                message,
+                egui::FontId::proportional(26.0),
+                Color32::WHITE,
+            );
+            painter.text(
+                canvas.center() + egui::vec2(0.0, 26.0),
+                egui::Align2::CENTER_CENTER,
+                "JPEG · PNG · WebP  |  Ctrl+O para abrir",
+                egui::FontId::proportional(15.0),
+                MUTED,
+            );
+        }
+    }
+}
+
+impl eframe::App for RasteraApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.receive(&ctx);
+        self.shortcuts(&ctx);
+        self.header(ui);
+        if let Some(error) = &self.error {
+            ui.label(RichText::new(error).color(Color32::from_rgb(255, 155, 140)));
+        }
+        let height = (ui.available_height() - 30.0).max(100.0);
+        ui.horizontal_top(|ui| {
+            egui::Frame::NONE
+                .fill(Color32::from_rgb(26, 33, 42))
+                .inner_margin(16)
+                .show(ui, |ui| {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(205.0, height - 32.0),
+                        Layout::top_down(Align::Min),
+                        |ui| {
+                            ui.set_min_height(height - 32.0);
+                            self.inspector(ui);
+                        },
+                    );
+                });
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), height),
+                Layout::top_down(Align::Min),
+                |ui| {
+                    self.viewer(ui);
+                },
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(if self.loading { "Cargando…" } else { "Listo" })
+                    .small()
+                    .color(MUTED),
+            );
+            if self.dialog.is_some() {
+                ui.label("Seleccionando archivo…");
+            }
+        });
+        #[cfg(feature = "capture")]
+        self.capture(&ctx);
+    }
+}

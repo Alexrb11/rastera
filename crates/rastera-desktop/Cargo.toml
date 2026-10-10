@@ -12,6 +12,13 @@ path = "src/main.rs"
 rastera-core.workspace = true
 rastera-engine.workspace = true
 rastera-adapters.workspace = true
+eframe.workspace = true
+rfd.workspace = true
+crossbeam-channel.workspace = true
+image = { workspace = true, optional = true }
+
+[features]
+capture = ["dep:image"]
 
 [lints]
 workspace = true

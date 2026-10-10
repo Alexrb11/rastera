@@ -6,7 +6,9 @@ Rastera tendrá una interfaz de escritorio nativa y trabajará sobre carpetas lo
 
 ## Estado del proyecto
 
-El repositorio contiene el diseño inicial. La aplicación todavía no está implementada y las decisiones de rendimiento deberán validarse con un prototipo.
+El primer visor está implementado: abre JPEG, PNG y WebP estáticos mediante diálogo, ruta, arrastre o argumento de inicio. Incluye zoom, desplazamiento, orientación EXIF, transparencia y detalles de la imagen. La carga se ejecuta en un trabajador con cancelación y presupuesto de memoria.
+
+La arquitectura describe también las siguientes fases. El catálogo, las etiquetas, las miniaturas persistentes y las operaciones por lotes todavía están pendientes. No hay una comparación de rendimiento publicada.
 
 Windows será la primera plataforma de desarrollo. La separación entre interfaz, lógica y adaptadores permitirá incorporar Linux y macOS después de comprobar su integración y distribución.
 
@@ -33,3 +35,24 @@ El diseño favorece la carga progresiva y la reutilización de recursos. Usar Ru
 - [Plan de desarrollo](docs/roadmap.md): entregas y criterios de aceptación.
 
 La inspiración de producto es el enfoque de aplicaciones nativas y locales de [Artcraft](https://getartcraft.com/apps). Rastera tendrá su propio alcance y diseño.
+
+## Desarrollo
+
+Se requiere Rust 1.95 o posterior y las herramientas de compilación del sistema. En Windows, el toolchain MSVC requiere las herramientas de C++ y el SDK de Windows; GNU requiere un entorno MinGW compatible. La validación local inicial usa Rust 1.99 sobre Windows GNU.
+
+```powershell
+cargo run -p rastera-desktop --locked
+cargo run -p rastera-desktop --locked -- "C:\Fotos\imagen.png"
+```
+
+En PowerShell también se puede usar `.\scripts\dev.ps1 run`. El script aprovecha un toolchain local en `work/` cuando exista y Cargo no esté disponible en el PATH; las herramientas locales no forman parte del repositorio.
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-targets --all-features --locked
+```
+
+La primera compilación descargará dependencias y tardará más que las siguientes. El visor limita la vista previa a 4.096 píxeles por lado. El zoom se aplica sobre esa vista; la carga completa bajo demanda y la gestión de color ICC siguen pendientes. Los límites iniciales son 128 MiB por archivo, 64 millones de píxeles y un presupuesto compartido de buffers de 512 MiB. Una imagen puede rechazarse por memoria aunque cumpla el límite de píxeles. Este presupuesto no equivale a la memoria total del proceso.
+
+La característica opcional `capture` permite una comprobación visual del renderizado real: con `RASTERA_CAPTURE_TO` apuntando a un PNG, la aplicación guarda una captura cuando termina la carga y se cierra. Es una herramienta de desarrollo, deshabilitada por defecto.
