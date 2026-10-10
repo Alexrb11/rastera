@@ -13,6 +13,7 @@ struct Thumbnail {
     size: Vec2,
     error: Option<String>,
     touched: u64,
+    source_size: Option<(u32, u32)>,
 }
 
 #[cfg(feature = "capture")]
@@ -34,6 +35,8 @@ pub struct ThumbnailGrid {
     clock: u64,
     pub selected: HashSet<PathBuf>,
     pub open_viewer: bool,
+    pub organize: bool,
+    pub export: bool,
     anchor: Option<PathBuf>,
     pub density: u8,
     #[cfg(feature = "capture")]
@@ -59,6 +62,8 @@ impl ThumbnailGrid {
             clock: 0,
             selected: HashSet::new(),
             open_viewer: false,
+            organize: false,
+            export: false,
             anchor: None,
             density: 1,
             #[cfg(feature = "capture")]
@@ -151,12 +156,14 @@ impl ThumbnailGrid {
                     )),
                     error: None,
                     touched: self.clock,
+                    source_size: Some(image.source_size),
                 },
                 Err(error) => Thumbnail {
                     texture: None,
                     size: Vec2::ZERO,
                     error: Some(error.to_string()),
                     touched: self.clock,
+                    source_size: None,
                 },
             };
             // At most 128 textures of 256² RGBA pixels: 32 MiB of GPU pixel data.
@@ -185,6 +192,8 @@ impl ThumbnailGrid {
         let mut opened = None;
         let mut clicked = None;
         self.open_viewer = false;
+        self.organize = false;
+        self.export = false;
         let target_width = match self.density {
             0 => 112.0,
             2 => 204.0,
@@ -202,7 +211,7 @@ impl ThumbnailGrid {
             } else {
                 0.76
             }
-            + 30.0;
+            + 46.0;
         let mut wanted = None;
         let mut pending_visible = false;
         #[cfg(feature = "capture")]
@@ -260,7 +269,9 @@ impl ThumbnailGrid {
                                 rect,
                                 2.0,
                                 egui::Stroke::new(
-                                    if selected || current == Some(path.as_path()) {
+                                    if selected {
+                                        2.0
+                                    } else if current == Some(path.as_path()) {
                                         1.0
                                     } else {
                                         0.0
@@ -277,9 +288,9 @@ impl ThumbnailGrid {
                             );
                             let area = Rect::from_min_max(
                                 rect.min + egui::vec2(5.0, 5.0),
-                                rect.max - egui::vec2(5.0, 26.0),
+                                rect.max - egui::vec2(5.0, 42.0),
                             );
-                            ui.painter().rect_filled(area, 0.0, theme::BACKGROUND);
+                            ui.painter().rect_filled(area, 1.0, theme::CANVAS);
                             if let Some(thumbnail) = self.cache.get_mut(path) {
                                 #[cfg(feature = "capture")]
                                 {
@@ -332,9 +343,28 @@ impl ThumbnailGrid {
                             job.wrap.break_anywhere = true;
                             let galley = ui.painter().layout_job(job);
                             ui.painter().galley(
-                                egui::pos2(rect.min.x + 5.0, rect.max.y - 21.0),
+                                egui::pos2(rect.min.x + 5.0, rect.max.y - 37.0),
                                 galley,
                                 theme::TEXT,
+                            );
+                            let kind = path
+                                .extension()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_ascii_uppercase();
+                            let details = self
+                                .cache
+                                .get(path)
+                                .and_then(|thumbnail| thumbnail.source_size)
+                                .map_or(kind.clone(), |(width, height)| {
+                                    format!("{kind} · {width} × {height}")
+                                });
+                            ui.painter().text(
+                                rect.left_bottom() + egui::vec2(5.0, -8.0),
+                                egui::Align2::LEFT_BOTTOM,
+                                details,
+                                egui::FontId::proportional(10.0),
+                                theme::MUTED,
                             );
                             response.widget_info(|| {
                                 egui::WidgetInfo::selected(
@@ -380,16 +410,16 @@ impl ThumbnailGrid {
                             }
                             if catalog.annotation(path).is_some_and(|a| a.favorite) {
                                 let badge = Rect::from_min_size(
-                                    area.right_top() - egui::vec2(68.0, -4.0),
-                                    egui::vec2(64.0, 20.0),
+                                    area.right_top() - egui::vec2(26.0, -4.0),
+                                    egui::vec2(22.0, 22.0),
                                 );
-                                ui.painter().rect_filled(badge, 4.0, theme::SURFACE);
+                                ui.painter().rect_filled(badge, 2.0, theme::SURFACE);
                                 ui.painter().text(
                                     badge.center(),
                                     egui::Align2::CENTER_CENTER,
-                                    "Favorita",
-                                    egui::FontId::proportional(11.0),
-                                    theme::ACCENT,
+                                    "★",
+                                    egui::FontId::proportional(15.0),
+                                    Color32::from_rgb(225, 190, 114),
                                 );
                             }
                             response.clone().on_hover_text(format!(
@@ -399,6 +429,10 @@ impl ThumbnailGrid {
                             if response.clicked() {
                                 let modifiers = ui.input(|input| input.modifiers);
                                 clicked = Some((path.clone(), modifiers.command, modifiers.shift));
+                                opened = Some(path.clone());
+                            }
+                            if response.secondary_clicked() && !selected {
+                                clicked = Some((path.clone(), false, false));
                                 opened = Some(path.clone());
                             }
                             if response.double_clicked() {
@@ -413,6 +447,23 @@ impl ThumbnailGrid {
                                 }
                                 if ui.button("Copiar ruta").clicked() {
                                     ui.ctx().copy_text(path.to_string_lossy().into_owned());
+                                    ui.close();
+                                }
+                                ui.separator();
+                                if ui
+                                    .add_enabled(
+                                        catalog.ready,
+                                        egui::Button::new("Organizar imagen…"),
+                                    )
+                                    .clicked()
+                                {
+                                    self.organize = true;
+                                    opened = Some(path.clone());
+                                    ui.close();
+                                }
+                                if ui.button("Exportar selección…").clicked() {
+                                    self.export = true;
+                                    opened = Some(path.clone());
                                     ui.close();
                                 }
                             });

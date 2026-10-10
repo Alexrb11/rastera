@@ -18,6 +18,7 @@ pub struct Catalog {
     search: String,
     favorites: bool,
     format: String,
+    descending: bool,
     dirty: bool,
     pub filtered: Vec<FolderEntry>,
     pub editor_open: bool,
@@ -55,6 +56,7 @@ impl Catalog {
             search: String::new(),
             favorites: false,
             format: String::new(),
+            descending: false,
             dirty: true,
             filtered: Vec::new(),
             editor_open: false,
@@ -79,6 +81,18 @@ impl Catalog {
     }
     pub fn annotation(&self, path: &Path) -> Option<&Annotation> {
         self.annotations.get(path)
+    }
+    pub fn open_editor(&mut self) {
+        self.editor_path = None;
+        self.editor_open = true;
+    }
+    pub fn toggle_favorite(&mut self, path: &Path, info: Option<ImageInfo>) {
+        let mut annotation = self.annotations.get(path).cloned().unwrap_or_default();
+        annotation.favorite = !annotation.favorite;
+        self.save(path.to_path_buf(), annotation, info);
+    }
+    pub fn focus_search(&self, ctx: &egui::Context) {
+        ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("catalog-search")));
     }
     pub fn clear_filters(&mut self) {
         self.search.clear();
@@ -158,10 +172,17 @@ impl Catalog {
                 .add(
                     egui::TextEdit::singleline(&mut self.search)
                         .hint_text("Buscar nombre o etiqueta")
-                        .desired_width((ui.available_width() - 335.0).clamp(140.0, 300.0)),
+                        .id(egui::Id::new("catalog-search"))
+                        .desired_width((ui.available_width() - 375.0).clamp(160.0, 350.0)),
                 )
+                .on_hover_text("Buscar en esta carpeta · Ctrl+F")
                 .changed();
-            self.dirty |= ui.checkbox(&mut self.favorites, "Solo favoritos").changed();
+            self.dirty |= ui
+                .selectable_value(&mut self.favorites, false, "Todas")
+                .changed();
+            self.dirty |= ui
+                .selectable_value(&mut self.favorites, true, "Favoritas")
+                .changed();
             egui::ComboBox::from_id_salt("format-filter")
                 .selected_text(if self.format.is_empty() {
                     "Todos los formatos"
@@ -224,8 +245,37 @@ impl Catalog {
                 })
                 .cloned()
                 .collect();
+            self.filtered.sort_by_cached_key(|entry| {
+                entry
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_lowercase()
+            });
+            if self.descending {
+                self.filtered.reverse();
+            }
             self.dirty = false;
         }
+    }
+
+    pub fn sort_control(&mut self, ui: &mut egui::Ui) {
+        egui::ComboBox::from_id_salt("catalog-sort")
+            .selected_text(if self.descending {
+                "Nombre Z–A"
+            } else {
+                "Nombre A–Z"
+            })
+            .width(108.0)
+            .show_ui(ui, |ui| {
+                self.dirty |= ui
+                    .selectable_value(&mut self.descending, false, "Nombre A–Z")
+                    .changed();
+                self.dirty |= ui
+                    .selectable_value(&mut self.descending, true, "Nombre Z–A")
+                    .changed();
+            });
     }
 
     pub fn editor(&mut self, ctx: &egui::Context, path: Option<&Path>, info: Option<&ImageInfo>) {
@@ -240,10 +290,13 @@ impl Catalog {
         }
         let mut open = self.editor_open;
         let mut saved = false;
+        let mut cancelled = false;
         egui::Window::new("Organizar imagen")
             .open(&mut open)
             .default_width(360.0)
             .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
                 if let Some(path) = path {
                     ui.label(
@@ -252,24 +305,37 @@ impl Catalog {
                     );
                     ui.add_space(8.0);
                     ui.checkbox(&mut self.editor_favorite, "Favorita");
-                    ui.label("Etiquetas separadas por comas (hasta 32, de 64 caracteres)");
+                    ui.label("Etiquetas");
                     ui.add(
                         egui::TextEdit::singleline(&mut self.editor_tags)
                             .char_limit(2048)
+                            .hint_text("Ej. viaje, paisaje, para imprimir")
                             .desired_width(f32::INFINITY),
                     );
-                    if ui
-                        .add_enabled(self.ready, crate::theme::primary("Guardar cambios"))
-                        .clicked()
-                    {
-                        let mut annotation =
-                            self.annotations.get(path).cloned().unwrap_or_default();
-                        annotation.favorite = self.editor_favorite;
-                        annotation.tags = normalize_tags(&self.editor_tags);
-                        saved = self.save(path.to_path_buf(), annotation, info.cloned());
-                    }
                     ui.label(
-                        "La organización se guarda en el catálogo local, sin modificar el archivo.",
+                        egui::RichText::new("Separa las etiquetas con comas. Hasta 32 etiquetas.")
+                            .small()
+                            .color(crate::theme::MUTED),
+                    );
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(self.ready, crate::theme::primary("Guardar cambios"))
+                            .clicked()
+                        {
+                            let mut annotation =
+                                self.annotations.get(path).cloned().unwrap_or_default();
+                            annotation.favorite = self.editor_favorite;
+                            annotation.tags = normalize_tags(&self.editor_tags);
+                            saved = self.save(path.to_path_buf(), annotation, info.cloned());
+                        }
+                        cancelled = ui.button("Cancelar").clicked();
+                    });
+                    ui.label(
+                        egui::RichText::new("Guardado local. El archivo original se conserva.")
+                            .small()
+                            .color(crate::theme::MUTED),
                     );
                 } else {
                     ui.label("Selecciona una imagen.");
@@ -278,7 +344,7 @@ impl Catalog {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
             });
-        self.editor_open = open && !saved;
+        self.editor_open = open && !saved && !cancelled;
     }
 }
 
@@ -286,6 +352,116 @@ impl Catalog {
 mod tests {
     use super::*;
     use rastera_core::{CatalogBackend, FileStamp, ImageKind};
+
+    #[test]
+    fn filtered_library_sorts_names_and_keeps_order_when_filters_reset() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("catalog.sqlite");
+        let worker = CatalogWorker::new(
+            move || Ok(Box::new(SqliteCatalog::open(&db_path)?)),
+            Arc::new(|| {}),
+        );
+        let mut catalog = Catalog::with_worker(worker);
+        let entries: Vec<_> = ["zebra.png", "Alpha.png", "middle.jpg"]
+            .into_iter()
+            .map(|name| FolderEntry {
+                path: dir.path().join(name),
+            })
+            .collect();
+        catalog.annotations.insert(
+            entries[0].path.clone(),
+            Annotation {
+                favorite: true,
+                tags: vec!["Aprobada".into()],
+                ..Default::default()
+            },
+        );
+        catalog.annotations.insert(
+            entries[1].path.clone(),
+            Annotation {
+                favorite: true,
+                tags: vec!["aprobada".into()],
+                ..Default::default()
+            },
+        );
+        let ctx = egui::Context::default();
+        let refresh = |catalog: &mut Catalog| {
+            let mut output = ctx.run_ui(Default::default(), |ui| {
+                egui::CentralPanel::default().show(ui, |ui| catalog.filters(ui, &entries));
+            });
+            output.textures_delta.clear();
+            catalog
+                .filtered
+                .iter()
+                .map(|entry| {
+                    entry
+                        .path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            refresh(&mut catalog),
+            ["Alpha.png", "middle.jpg", "zebra.png"]
+        );
+        catalog.descending = true;
+        catalog.search = "APROBADA".into();
+        catalog.favorites = true;
+        catalog.format = "PNG".into();
+        catalog.invalidate();
+        assert_eq!(refresh(&mut catalog), ["zebra.png", "Alpha.png"]);
+        catalog.clear_filters();
+        assert_eq!(
+            refresh(&mut catalog),
+            ["zebra.png", "middle.jpg", "Alpha.png"]
+        );
+    }
+
+    #[test]
+    fn inline_favorite_preserves_tags_and_dimensions_after_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("catalog.sqlite");
+        let worker_path = db_path.clone();
+        let worker = CatalogWorker::new(
+            move || Ok(Box::new(SqliteCatalog::open(&worker_path)?)),
+            Arc::new(|| {}),
+        );
+        let mut catalog = Catalog::with_worker(worker);
+        let path = dir.path().join("photo.png");
+        let annotation = Annotation {
+            favorite: true,
+            tags: vec!["aprobada".into()],
+            width: Some(90),
+            height: Some(60),
+            format: Some("PNG".into()),
+        };
+        let info = ImageInfo {
+            width: 90,
+            height: 60,
+            kind: ImageKind::Png,
+            stamp: FileStamp {
+                length: 200,
+                modified: None,
+            },
+            has_color_profile: false,
+        };
+        assert!(catalog.save(path.clone(), annotation.clone(), Some(info)));
+        catalog.toggle_favorite(&path, None);
+        assert!(!catalog.annotations[&path].favorite);
+        drop(catalog);
+        let mut db = SqliteCatalog::open(&db_path).unwrap();
+        let saved = db.load(&[path]).unwrap().remove(0).1;
+        assert_eq!(
+            saved,
+            Annotation {
+                favorite: false,
+                ..annotation
+            }
+        );
+    }
     #[test]
     fn metadata_updates_preserve_accepted_edits_and_close_flushes_writes() {
         let dir = tempfile::tempdir().unwrap();

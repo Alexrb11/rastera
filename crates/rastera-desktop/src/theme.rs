@@ -1,14 +1,41 @@
 use eframe::egui::{self, Color32, FontId, RichText, Stroke};
 
-pub const BACKGROUND: Color32 = Color32::from_rgb(29, 30, 32);
-pub const SURFACE: Color32 = Color32::from_rgb(38, 40, 43);
-pub const BORDER: Color32 = Color32::from_rgb(66, 69, 74);
-pub const TEXT: Color32 = Color32::from_rgb(224, 225, 227);
-pub const MUTED: Color32 = Color32::from_rgb(166, 169, 175);
-pub const ACCENT: Color32 = Color32::from_rgb(141, 183, 236);
-pub const SELECTED: Color32 = Color32::from_rgb(48, 67, 89);
+pub const BACKGROUND: Color32 = Color32::from_rgb(24, 26, 29);
+pub const SURFACE: Color32 = Color32::from_rgb(32, 35, 39);
+pub const BORDER: Color32 = Color32::from_rgb(54, 59, 65);
+pub const TEXT: Color32 = Color32::from_rgb(229, 232, 237);
+pub const MUTED: Color32 = Color32::from_rgb(156, 164, 175);
+pub const ACCENT: Color32 = Color32::from_rgb(116, 177, 246);
+pub const SELECTED: Color32 = Color32::from_rgb(38, 61, 86);
+pub const CANVAS: Color32 = Color32::from_rgb(19, 21, 24);
+
+pub fn display_path(path: &std::path::Path) -> String {
+    let text = path.to_string_lossy();
+    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{unc}")
+    } else {
+        text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned()
+    }
+}
 
 pub fn configure(ctx: &egui::Context) {
+    // Use the installed Windows UI font; other platforms retain egui's fallback.
+    #[cfg(target_os = "windows")]
+    if let Ok(bytes) = std::fs::read(
+        std::path::PathBuf::from(std::env::var_os("WINDIR").unwrap_or_else(|| "C:/Windows".into()))
+            .join("Fonts/segoeui.ttf"),
+    ) {
+        let mut fonts = egui::FontDefinitions::default();
+        fonts
+            .font_data
+            .insert("system-ui".into(), egui::FontData::from_owned(bytes).into());
+        fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .unwrap()
+            .insert(0, "system-ui".into());
+        ctx.set_fonts(fonts);
+    }
     ctx.set_theme(egui::Theme::Dark);
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = BACKGROUND;
@@ -17,7 +44,7 @@ pub fn configure(ctx: &egui::Context) {
     visuals.faint_bg_color = SURFACE;
     visuals.weak_text_color = Some(MUTED);
     visuals.window_stroke = Stroke::new(1.0, BORDER);
-    visuals.window_corner_radius = 3.into();
+    visuals.window_corner_radius = 4.into();
     visuals.selection.bg_fill = SELECTED;
     visuals.selection.stroke = Stroke::new(1.0, ACCENT);
     for widget in [
@@ -37,10 +64,10 @@ pub fn configure(ctx: &egui::Context) {
     visuals.widgets.active.fg_stroke = Stroke::new(1.0, TEXT);
     ctx.set_visuals(visuals);
     ctx.style_mut_of(egui::Theme::Dark, |style| {
-        style.spacing.item_spacing = egui::vec2(6.0, 6.0);
-        style.spacing.button_padding = egui::vec2(8.0, 4.0);
-        style.spacing.interact_size = egui::vec2(26.0, 26.0);
-        style.spacing.window_margin = 12.into();
+        style.spacing.item_spacing = egui::vec2(8.0, 8.0);
+        style.spacing.button_padding = egui::vec2(10.0, 5.0);
+        style.spacing.interact_size = egui::vec2(28.0, 28.0);
+        style.spacing.window_margin = 16.into();
         style
             .text_styles
             .insert(egui::TextStyle::Body, FontId::proportional(13.0));
@@ -58,8 +85,25 @@ pub fn configure(ctx: &egui::Context) {
 
 pub fn primary(label: impl Into<String>) -> egui::Button<'static> {
     egui::Button::new(RichText::new(label.into()).color(TEXT))
-        .fill(SELECTED)
-        .stroke(Stroke::new(1.0, BORDER))
+        .fill(Color32::from_rgb(45, 91, 144))
+        .stroke(Stroke::new(1.0, Color32::from_rgb(61, 116, 178)))
+}
+
+pub fn tab(ui: &mut egui::Ui, selected: bool, label: &str) -> egui::Response {
+    let response = ui.add(egui::Button::new(label).selected(selected).frame(false));
+    if selected {
+        ui.painter().line_segment(
+            [response.rect.left_bottom(), response.rect.right_bottom()],
+            Stroke::new(2.0, ACCENT),
+        );
+    }
+    response
+}
+
+pub fn panel_frame() -> egui::Frame {
+    egui::Frame::NONE
+        .fill(SURFACE)
+        .inner_margin(egui::Margin::symmetric(12, 8))
 }
 
 pub fn eyebrow(ui: &mut egui::Ui, text: &str) {

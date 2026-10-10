@@ -19,6 +19,7 @@ pub struct RasteraApp {
     inspector_open: bool,
     details_popup: bool,
     route_open: bool,
+    route_focus_requested: bool,
     shortcuts_open: bool,
     diagnostics_open: bool,
     detail: crate::detail::DetailView,
@@ -28,6 +29,7 @@ pub struct RasteraApp {
     metadata_dirty: bool,
     grid: crate::grid::ThumbnailGrid,
     grid_view: bool,
+    viewer_filtered: bool,
     loader: ImageLoader,
     scanner: FolderScanner,
     folder_generation: u64,
@@ -73,6 +75,7 @@ impl RasteraApp {
             inspector_open: true,
             details_popup: false,
             route_open: false,
+            route_focus_requested: false,
             shortcuts_open: false,
             diagnostics_open: false,
             detail: crate::detail::DetailView::new(&cc.egui_ctx, budget.clone()),
@@ -82,6 +85,7 @@ impl RasteraApp {
             metadata_dirty: false,
             grid,
             grid_view: false,
+            viewer_filtered: false,
             loader,
             scanner,
             folder_generation: 0,
@@ -119,6 +123,7 @@ impl RasteraApp {
     }
 
     fn open(&mut self, path: PathBuf) {
+        self.viewer_filtered = false;
         self.detail.clear();
         let path = std::path::absolute(&path).unwrap_or(path);
         self.grid.reset();
@@ -327,6 +332,47 @@ impl RasteraApp {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
+        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
+            self.shortcuts_open = true;
+        }
+        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::F4)) {
+            self.open_route();
+        }
+        let panel_open = self.batch.open
+            || self.catalog.editor_open
+            || self.route_open
+            || self.details_popup
+            || self.shortcuts_open
+            || self.diagnostics_open;
+        if panel_open
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.batch.open = false;
+            self.catalog.editor_open = false;
+            self.route_open = false;
+            self.details_popup = false;
+            self.shortcuts_open = false;
+            self.diagnostics_open = false;
+        }
+        if !panel_open
+            && self.folder.is_some()
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::F))
+        {
+            self.grid_view = true;
+            self.catalog.focus_search(ctx);
+        }
+        if !panel_open
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::F5))
+            && let Some(folder) = self.folder.clone()
+        {
+            self.open(folder);
+        }
+        if !panel_open
+            && (self.path.is_some() || !self.grid.selected.is_empty())
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::E))
+        {
+            self.export_selection();
+        }
         if ctx.input_mut(|input| {
             input.consume_key(
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -338,7 +384,7 @@ impl RasteraApp {
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::O)) {
             self.pick_file(ctx);
         }
-        if !ctx.egui_wants_keyboard_input() {
+        if !ctx.egui_wants_keyboard_input() && !panel_open && !self.batch.open {
             if self.grid_view
                 && ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::A))
             {
@@ -393,13 +439,13 @@ impl RasteraApp {
 
     fn step(&mut self, delta: isize) {
         let current = self
-            .entries
+            .viewer_entries()
             .iter()
             .position(|entry| Some(&entry.path) == self.path.as_ref());
         if let Some(current) = current {
             let next = current.checked_add_signed(delta);
             if let Some(path) = next
-                .and_then(|index| self.entries.get(index))
+                .and_then(|index| self.viewer_entries().get(index))
                 .map(|entry| entry.path.clone())
             {
                 self.open_image(path);
@@ -461,12 +507,20 @@ impl RasteraApp {
     }
 
     fn export_selection(&mut self) {
-        let paths = if self.grid.selected.is_empty() {
+        let paths = if !self.grid_view || self.grid.selected.is_empty() {
             self.path.iter().cloned().collect()
         } else {
             self.grid.selected.iter().cloned().collect()
         };
         self.batch.select(paths);
+    }
+
+    fn open_route(&mut self) {
+        self.route_open = true;
+        self.route_focus_requested = true;
+        if let Some(path) = self.folder.as_ref().or(self.path.as_ref()) {
+            self.path_input = theme::display_path(path);
+        }
     }
 
     fn auxiliary_windows(&mut self, ctx: &egui::Context) {
@@ -481,6 +535,10 @@ impl RasteraApp {
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.path_input).desired_width(f32::INFINITY),
                 );
+                if self.route_focus_requested {
+                    response.request_focus();
+                    self.route_focus_requested = false;
+                }
                 accepted = ui
                     .add_enabled(!self.path_input.trim().is_empty(), theme::primary("Abrir"))
                     .clicked()
@@ -489,7 +547,7 @@ impl RasteraApp {
                         && !self.path_input.trim().is_empty());
             });
         if accepted {
-            self.open(PathBuf::from(self.path_input.trim()));
+            self.open(PathBuf::from(self.path_input.trim().trim_matches('"')));
             open = false;
         }
         self.route_open = open;
@@ -505,9 +563,12 @@ impl RasteraApp {
                             ("Ctrl+O", "Abrir imagen"),
                             ("Ctrl+Shift+O", "Abrir carpeta"),
                             ("Ctrl+A", "Seleccionar los resultados del filtro"),
+                            ("Ctrl+F", "Buscar en la carpeta"),
+                            ("Ctrl+E", "Exportar la selección o imagen"),
+                            ("F4 / F5", "Abrir una ruta / actualizar carpeta"),
                             ("Ctrl+clic", "Añadir o quitar de la selección"),
                             ("Shift+clic", "Seleccionar un rango"),
-                            ("Esc", "Deseleccionar / volver a Biblioteca"),
+                            ("Esc", "Cerrar panel / deseleccionar / volver"),
                             ("← / →", "Imagen anterior / siguiente en el visor"),
                             ("Home", "Ajustar a ventana"),
                             ("+ / −", "Ampliar / reducir"),
@@ -530,37 +591,69 @@ impl RasteraApp {
 
     fn welcome(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
-            ui.add_space((ui.available_height() * 0.3).max(20.0));
-            ui.heading("Abrir imágenes");
+            ui.add_space((ui.available_height() * 0.28).max(20.0));
+            ui.heading("Tu biblioteca de imágenes");
+            ui.add_space(4.0);
             ui.label(
-                RichText::new("Abre una carpeta o arrastra imágenes a esta ventana.").color(MUTED),
+                RichText::new(
+                    "Abre una carpeta para explorar, organizar y exportar tus fotografías.",
+                )
+                .color(MUTED),
             );
-            ui.add_space(8.0);
-            if ui.button("Abrir carpeta…").clicked() {
+            ui.add_space(16.0);
+            if ui.add(theme::primary("Abrir carpeta…")).clicked() {
                 self.pick_path(ui.ctx(), true);
             }
-            if ui.button("Abrir imagen…").clicked() {
+            if ui.button("Abrir una imagen…").clicked() {
                 self.pick_file(ui.ctx());
             }
-            ui.add_space(8.0);
+            ui.add_space(16.0);
+            ui.label(
+                RichText::new("También puedes arrastrar una imagen o carpeta a esta ventana.")
+                    .small()
+                    .color(MUTED),
+            );
             ui.label(RichText::new("JPEG · PNG · WebP").small().color(MUTED));
         });
     }
+
     fn header(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Rastera").strong());
-            ui.separator();
+        egui::MenuBar::new().ui(ui, |ui| {
+            ui.label(RichText::new("Rastera").strong().color(MUTED));
+            ui.add_space(8.0);
             ui.menu_button("Archivo", |ui| {
-                if ui.button("Abrir carpeta…      Ctrl+Shift+O").clicked() {
+                if ui
+                    .add(egui::Button::new("Abrir carpeta…").shortcut_text("Ctrl+Shift+O"))
+                    .clicked()
+                {
                     self.pick_path(ui.ctx(), true);
                     ui.close();
                 }
-                if ui.button("Abrir imagen…       Ctrl+O").clicked() {
+                if ui
+                    .add(egui::Button::new("Abrir imagen…").shortcut_text("Ctrl+O"))
+                    .clicked()
+                {
                     self.pick_file(ui.ctx());
                     ui.close();
                 }
-                if ui.button("Abrir una ruta…").clicked() {
-                    self.route_open = true;
+                if ui
+                    .add(egui::Button::new("Abrir una ruta…").shortcut_text("F4"))
+                    .clicked()
+                {
+                    self.open_route();
+                    ui.close();
+                }
+                ui.separator();
+                if ui
+                    .add_enabled(
+                        self.folder.is_some(),
+                        egui::Button::new("Actualizar carpeta").shortcut_text("F5"),
+                    )
+                    .clicked()
+                {
+                    if let Some(folder) = self.folder.clone() {
+                        self.open(folder);
+                    }
                     ui.close();
                 }
             });
@@ -570,20 +663,27 @@ impl RasteraApp {
                         self.grid_view = true;
                         ui.close();
                     }
-                    if ui.selectable_label(!self.grid_view, "Visor").clicked() {
+                    if ui
+                        .add_enabled(
+                            self.path.is_some(),
+                            egui::Button::selectable(!self.grid_view, "Visor"),
+                        )
+                        .clicked()
+                    {
                         self.grid_view = false;
                         ui.close();
                     }
                     ui.separator();
+                } else if ui.button("Ver carpeta").clicked()
+                    && let Some(parent) = self.path.as_ref().and_then(|path| path.parent())
+                {
+                    self.open(parent.to_path_buf());
+                    ui.close();
                 }
                 if ui.ctx().viewport_rect().width() >= 980.0 {
                     ui.checkbox(&mut self.inspector_open, "Panel de propiedades");
                 } else if ui.button("Propiedades de imagen…").clicked() {
                     self.details_popup = true;
-                    ui.close();
-                }
-                if ui.button("Atajos de teclado…").clicked() {
-                    self.shortcuts_open = true;
                     ui.close();
                 }
             });
@@ -608,16 +708,33 @@ impl RasteraApp {
                     ui.close();
                 }
             });
+            ui.menu_button("Ayuda", |ui| {
+                if ui
+                    .add(egui::Button::new("Atajos de teclado…").shortcut_text("F1"))
+                    .clicked()
+                {
+                    self.shortcuts_open = true;
+                    ui.close();
+                }
+                ui.separator();
+                ui.label(format!("Rastera {}", env!("CARGO_PKG_VERSION")));
+            });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui
-                    .add_enabled(self.dialog.is_none(), egui::Button::new("Abrir imagen…"))
+                    .add_enabled(
+                        self.dialog.is_none(),
+                        egui::Button::new("Abrir imagen…").frame(false),
+                    )
                     .on_hover_text("Ctrl+O")
                     .clicked()
                 {
                     self.pick_file(ui.ctx());
                 }
                 if ui
-                    .add_enabled(self.dialog.is_none(), egui::Button::new("Abrir carpeta…"))
+                    .add_enabled(
+                        self.dialog.is_none(),
+                        egui::Button::new("Abrir carpeta…").frame(false),
+                    )
                     .on_hover_text("Ctrl+Shift+O")
                     .clicked()
                 {
@@ -625,103 +742,201 @@ impl RasteraApp {
                 }
             });
         });
-        ui.separator();
         if self.path.is_some() || self.folder.is_some() {
+            ui.separator();
             ui.horizontal(|ui| {
                 if self.folder.is_some() {
-                    ui.selectable_value(&mut self.grid_view, true, "Biblioteca");
-                    ui.selectable_value(&mut self.grid_view, false, "Visor");
-                    if ui
-                        .button("Actualizar")
-                        .on_hover_text("Vuelve a leer la carpeta y limpia la selección")
-                        .clicked()
-                        && let Some(folder) = self.folder.clone()
-                    {
-                        self.open(folder);
+                    if theme::tab(ui, self.grid_view, "Biblioteca").clicked() {
+                        self.grid_view = true;
                     }
+                    ui.add_enabled_ui(self.path.is_some(), |ui| {
+                        if theme::tab(ui, !self.grid_view, "Visor").clicked() {
+                            self.grid_view = false;
+                        }
+                    });
                     ui.separator();
                 }
-                let path = self
-                    .folder
+                if self.folder.is_none()
+                    && ui.button("Ver carpeta").clicked()
+                    && let Some(parent) = self.path.as_ref().and_then(|path| path.parent())
+                {
+                    self.open(parent.to_path_buf());
+                }
+                let location = self.folder.clone().or_else(|| {
+                    self.path
+                        .as_ref()
+                        .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+                });
+                let parent = location
                     .as_ref()
-                    .or(self.path.as_ref())
-                    .map(|path| path.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                let width = (ui.available_width() - 93.0).max(60.0);
+                    .and_then(|path| path.parent())
+                    .map(std::path::Path::to_path_buf);
                 if ui
-                    .add_sized([width, 26.0], egui::Button::new(&path).truncate())
-                    .on_hover_text("Abrir otra ruta")
+                    .add_enabled(parent.is_some(), egui::Button::new("↑").frame(false))
+                    .on_hover_text("Subir a la carpeta superior")
                     .clicked()
+                    && let Some(parent) = parent
                 {
-                    self.route_open = true;
+                    self.open(parent);
                 }
-                let compact = ui.ctx().viewport_rect().width() < 980.0;
                 if ui
-                    .selectable_label(self.inspector_open && !compact, "Propiedades")
+                    .add_enabled(self.folder.is_some(), egui::Button::new("↻").frame(false))
+                    .on_hover_text("Actualizar carpeta · F5")
                     .clicked()
+                    && let Some(folder) = self.folder.clone()
                 {
-                    if compact {
-                        self.details_popup = true;
-                    } else {
-                        self.inspector_open = !self.inspector_open;
+                    self.open(folder);
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let compact = ui.ctx().viewport_rect().width() < 980.0;
+                    if theme::tab(ui, self.inspector_open && !compact, "Propiedades").clicked() {
+                        if compact {
+                            self.details_popup = true;
+                        } else {
+                            self.inspector_open = !self.inspector_open;
+                        }
                     }
-                }
+                    if let Some(location) = location {
+                        let name = location.file_name().map_or_else(
+                            || location.display().to_string(),
+                            |name| name.to_string_lossy().into_owned(),
+                        );
+                        let parent = location
+                            .parent()
+                            .and_then(|parent| parent.file_name())
+                            .map(|name| name.to_string_lossy().into_owned());
+                        let label =
+                            parent.map_or(name.clone(), |parent| format!("{parent}  /  {name}"));
+                        let width = ui.available_width().max(60.0);
+                        if ui
+                            .add_sized(
+                                [width, 28.0],
+                                egui::Button::new(label).frame(false).truncate(),
+                            )
+                            .on_hover_text(format!(
+                                "{}\nHaz clic para abrir otra ruta",
+                                location.display()
+                            ))
+                            .clicked()
+                        {
+                            self.open_route();
+                        }
+                    }
+                });
             });
-            ui.add_space(4.0);
         }
     }
+
     fn library(&mut self, ui: &mut egui::Ui) {
         self.catalog.filters(ui, &self.entries);
-        ui.add_space(8.0);
+        ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
-            if ui.add_enabled(!self.catalog.filtered.is_empty(), egui::Button::new("Seleccionar todo")).on_hover_text("Ctrl+A · Selecciona los resultados del filtro").clicked() {
-                self.grid.select_all(&self.catalog.filtered);
-            }
-            if ui.add_enabled(!self.grid.selected.is_empty(), egui::Button::new("Deseleccionar"))
-                .on_hover_text("Esc · Limpia también las seleccionadas fuera del filtro").clicked() {
-                self.grid.clear_selection();
-            }
-            ui.label(RichText::new(format!("{} seleccionadas", self.grid.selected.len())).color(ACCENT));
-            let hidden = self.grid.selected.len() - self.catalog.filtered.iter()
-                .filter(|entry| self.grid.selected.contains(&entry.path)).count();
-            if hidden > 0 {
-                ui.label(RichText::new(format!("{hidden} fuera del filtro")).small().color(MUTED))
-                    .on_hover_text("La exportación incluye estas imágenes. Deseleccionar limpia toda la selección.");
-            }
-            if ui.add_enabled(!self.grid.selected.is_empty() || self.batch.busy,
-                theme::primary(if self.batch.busy { "Ver lote".to_owned() } else {
-                    format!("Exportar selección ({})", self.grid.selected.len())
-                })).clicked() {
-                if self.batch.busy { self.batch.open = true; }
-                else { self.export_selection(); }
-            }
-            egui::ComboBox::from_id_salt("tile-density").selected_text(match self.grid.density {
-                0 => "Miniaturas pequeñas", 2 => "Miniaturas grandes", _ => "Miniaturas medianas",
-            }).show_ui(ui, |ui| {
-                for (value, label) in [(0, "Compacta"), (1, "Mediana"), (2, "Amplia")] {
-                    ui.selectable_value(&mut self.grid.density, value, label);
+            ui.menu_button("Selección", |ui| {
+                if ui
+                    .add_enabled(
+                        !self.catalog.filtered.is_empty(),
+                        egui::Button::new("Seleccionar todo").shortcut_text("Ctrl+A"),
+                    )
+                    .clicked()
+                {
+                    self.grid.select_all(&self.catalog.filtered);
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(
+                        !self.grid.selected.is_empty(),
+                        egui::Button::new("Deseleccionar").shortcut_text("Esc"),
+                    )
+                    .clicked()
+                {
+                    self.grid.clear_selection();
+                    ui.close();
                 }
             });
-        });
-        ui.add_space(8.0);
-        if self.entries.is_empty() {
-            ui.add_space(36.0);
-            ui.heading(if self.folder_loading {
-                "Leyendo la carpeta…"
-            } else {
-                "Esta carpeta está vacía"
-            });
-            ui.label(
-                RichText::new("Aquí aparecerán las imágenes JPEG, PNG y WebP de esta carpeta.")
-                    .color(MUTED),
-            );
-        } else if self.catalog.filtered.is_empty() {
-            ui.add_space(36.0);
-            ui.heading("No hay imágenes que coincidan");
-            ui.label(RichText::new("Prueba otro nombre, etiqueta o formato.").color(MUTED));
-            if ui.button("Restablecer filtros").clicked() {
-                self.catalog.clear_filters();
+            self.catalog.sort_control(ui);
+            egui::ComboBox::from_id_salt("tile-density")
+                .width(100.0)
+                .selected_text(match self.grid.density {
+                    0 => "Pequeñas",
+                    2 => "Grandes",
+                    _ => "Medianas",
+                })
+                .show_ui(ui, |ui| {
+                    for (value, label) in [(0, "Pequeñas"), (1, "Medianas"), (2, "Grandes")] {
+                        ui.selectable_value(&mut self.grid.density, value, label);
+                    }
+                })
+                .response
+                .on_hover_text("Tamaño de las miniaturas");
+            let selected = self.grid.selected.len();
+            if selected > 0 || self.batch.busy {
+                ui.separator();
+                let hidden = selected
+                    - self
+                        .catalog
+                        .filtered
+                        .iter()
+                        .filter(|entry| self.grid.selected.contains(&entry.path))
+                        .count();
+                ui.label(RichText::new(format!("{selected} seleccionadas")).color(ACCENT));
+                if hidden > 0 {
+                    ui.label(
+                        RichText::new(format!("{hidden} fuera del filtro"))
+                            .small()
+                            .color(MUTED),
+                    )
+                    .on_hover_text(
+                        "La exportación también incluye las seleccionadas fuera del filtro.",
+                    );
+                }
+                if ui
+                    .add(theme::primary(if self.batch.busy {
+                        "Ver lote".to_owned()
+                    } else {
+                        format!("Exportar ({selected})…")
+                    }))
+                    .clicked()
+                {
+                    if self.batch.busy {
+                        self.batch.open = true;
+                    } else {
+                        self.export_selection();
+                    }
+                }
             }
+        });
+        ui.add_space(4.0);
+        ui.separator();
+        ui.add_space(4.0);
+        if self.entries.is_empty() || self.catalog.filtered.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space((ui.available_height() * 0.25).max(20.0));
+                ui.heading(if self.folder_loading {
+                    "Leyendo la carpeta…"
+                } else if self.entries.is_empty() {
+                    "No hay imágenes en esta carpeta"
+                } else {
+                    "No hay coincidencias"
+                });
+                ui.label(
+                    RichText::new(if self.entries.is_empty() {
+                        "Rastera muestra archivos JPEG, PNG y WebP de esta carpeta."
+                    } else {
+                        "Prueba otro nombre, etiqueta o formato."
+                    })
+                    .color(MUTED),
+                );
+                ui.add_space(12.0);
+                if !self.entries.is_empty() && ui.button("Restablecer filtros").clicked() {
+                    self.catalog.clear_filters();
+                }
+                if self.entries.is_empty()
+                    && !self.folder_loading
+                    && ui.button("Abrir otra carpeta…").clicked()
+                {
+                    self.pick_path(ui.ctx(), true);
+                }
+            });
         } else if let Some(path) = self.grid.show(
             ui,
             &self.catalog.filtered,
@@ -729,150 +944,220 @@ impl RasteraApp {
             self.path.as_deref(),
             &self.catalog,
         ) {
+            self.viewer_filtered = true;
             if self.path.as_ref() != Some(&path) {
                 self.open_image(path);
             }
             if self.grid.open_viewer {
                 self.grid_view = false;
             }
+            if self.grid.organize {
+                self.catalog.open_editor();
+            }
+            if self.grid.export {
+                self.export_selection();
+            }
         }
     }
 
+    fn status_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let busy =
+                self.loading || self.folder_loading || self.grid.busy() || self.detail.busy();
+            if busy {
+                ui.add(egui::Spinner::new().size(12.0));
+            }
+            ui.label(
+                RichText::new(if self.dialog.is_some() {
+                    "Esperando selección…"
+                } else if busy {
+                    "Cargando…"
+                } else {
+                    "Listo"
+                })
+                .small()
+                .color(MUTED),
+            );
+            if self.folder.is_some() {
+                ui.separator();
+                let count = if self.catalog.filtered.len() == self.entries.len() {
+                    format!("{} imágenes", self.entries.len())
+                } else {
+                    format!(
+                        "{} de {} imágenes",
+                        self.catalog.filtered.len(),
+                        self.entries.len()
+                    )
+                };
+                ui.label(RichText::new(count).small().color(MUTED));
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if self.batch.busy && ui.small_button("Exportación en curso · Ver lote").clicked()
+                {
+                    self.batch.open = true;
+                } else if ui.ctx().viewport_rect().width() >= 980.0 {
+                    ui.label(
+                        RichText::new(if self.grid_view {
+                            "Ctrl+F  Buscar    ·    Doble clic  Abrir"
+                        } else {
+                            "Rueda  Zoom    ·    Arrastrar  Desplazar    ·    Home  Ajustar"
+                        })
+                        .small()
+                        .color(MUTED),
+                    );
+                }
+            });
+        });
+    }
+
     fn inspector(&mut self, ui: &mut egui::Ui) {
-        theme::eyebrow(ui, "PROPIEDADES");
-        ui.add_space(12.0);
+        ui.label(RichText::new("Propiedades").strong());
+        ui.add_space(8.0);
+        let Some(path) = self.path.clone() else {
+            ui.label(RichText::new("Selecciona una imagen para ver sus propiedades.").color(MUTED));
+            return;
+        };
+        ui.add(
+            egui::Label::new(
+                RichText::new(path.file_name().unwrap_or_default().to_string_lossy()).strong(),
+            )
+            .wrap(),
+        );
         if let Some(preview) = &self.preview {
-            let width = ui.available_width();
-            let size = preview.size * (width / preview.size.x).min(110.0 / preview.size.y);
-            ui.add(egui::Image::new((preview.texture.id(), size)).corner_radius(0.0));
-            ui.add_space(12.0);
+            ui.add_space(8.0);
+            ui.vertical_centered(|ui| {
+                let size = preview.size
+                    * (ui.available_width() / preview.size.x).min(130.0 / preview.size.y);
+                ui.add(egui::Image::new((preview.texture.id(), size)));
+            });
+            ui.add_space(8.0);
+            theme::eyebrow(ui, "IMAGEN");
+            egui::Grid::new("image-properties")
+                .spacing([16.0, 8.0])
+                .show(ui, |ui| {
+                    for (label, value) in [
+                        (
+                            "Dimensiones",
+                            format!(
+                                "{} × {} px",
+                                preview.source_size.x as u32, preview.source_size.y as u32
+                            ),
+                        ),
+                        ("Formato", preview.info.kind.to_string()),
+                        ("Archivo", file_size(preview.info.stamp.length)),
+                    ] {
+                        ui.label(RichText::new(label).small().color(MUTED));
+                        ui.label(value);
+                        ui.end_row();
+                    }
+                });
+            if preview.info.has_color_profile {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("Color · ICC convertido a sRGB")
+                        .small()
+                        .color(MUTED),
+                );
+            }
+            if self.detail.ready() {
+                ui.label(
+                    RichText::new("Detalle a resolución completa")
+                        .small()
+                        .color(ACCENT),
+                );
+            }
+        } else if self.loading {
+            ui.label(RichText::new("Cargando propiedades…").small().color(MUTED));
         }
-        if let Some(path) = &self.path {
+        ui.add_space(12.0);
+        ui.separator();
+        ui.add_space(8.0);
+        theme::eyebrow(ui, "ORGANIZACIÓN");
+        let annotation = self.catalog.annotation(&path).cloned().unwrap_or_default();
+        let mut favorite = annotation.favorite;
+        if ui
+            .add_enabled(
+                self.catalog.ready,
+                egui::Checkbox::new(&mut favorite, "Favorita"),
+            )
+            .changed()
+        {
+            self.catalog.toggle_favorite(
+                &path,
+                self.preview.as_ref().map(|preview| preview.info.clone()),
+            );
+        }
+        if annotation.tags.is_empty() {
+            ui.label(RichText::new("Sin etiquetas").small().color(MUTED));
+        } else {
+            ui.label(RichText::new(annotation.tags.join(" · ")).color(MUTED));
+        }
+        if ui
+            .add_enabled(
+                self.catalog.ready,
+                egui::Button::new("Editar organización…"),
+            )
+            .clicked()
+        {
+            self.catalog.open_editor();
+        }
+        ui.add_space(8.0);
+        egui::CollapsingHeader::new("Ubicación del archivo").show(ui, |ui| {
             ui.add(
                 egui::Label::new(
-                    RichText::new(path.file_name().unwrap_or_default().to_string_lossy()).strong(),
+                    RichText::new(theme::display_path(&path))
+                        .small()
+                        .color(MUTED),
                 )
                 .wrap(),
             );
-            ui.add_space(8.0);
-            if let Some(preview) = &self.preview {
-                egui::Grid::new("image-properties")
-                    .spacing([16.0, 8.0])
-                    .show(ui, |ui| {
-                        for (label, value) in [
-                            (
-                                "Dimensiones",
-                                format!("{} × {} px", preview.info.width, preview.info.height),
-                            ),
-                            ("Formato", preview.info.kind.to_string()),
-                            ("Tamaño", file_size(preview.info.stamp.length)),
-                        ] {
-                            ui.label(RichText::new(label).small().color(MUTED));
-                            ui.label(value);
-                            ui.end_row();
-                        }
-                    });
-                ui.add_space(12.0);
-                if self.detail.ready() {
-                    ui.label(RichText::new("Resolución completa").small().color(ACCENT));
-                } else if self.loading {
-                    ui.label(RichText::new("Cargando vista previa…").small().color(MUTED));
-                }
-                if preview.info.has_color_profile {
-                    ui.label(RichText::new("ICC convertido a sRGB").small().color(MUTED));
-                }
-            }
-            ui.add_space(8.0);
-            ui.separator();
-            ui.add_space(8.0);
-            theme::eyebrow(ui, "ORGANIZACIÓN");
-            if let Some(annotation) = self.catalog.annotation(path) {
-                ui.label(if annotation.favorite {
-                    "Favorita"
-                } else {
-                    "Sin favorito"
-                });
-                if annotation.tags.is_empty() {
-                    ui.label(
-                        RichText::new("Añade etiquetas para encontrarla después.")
-                            .small()
-                            .color(MUTED),
-                    );
-                } else {
-                    ui.horizontal_wrapped(|ui| {
-                        for tag in &annotation.tags {
-                            egui::Frame::NONE
-                                .fill(theme::SELECTED)
-                                .corner_radius(4)
-                                .inner_margin(4)
-                                .show(ui, |ui| {
-                                    ui.label(RichText::new(tag).small().color(ACCENT));
-                                });
-                        }
-                    });
-                }
-            }
-            if ui
-                .add_enabled(self.catalog.ready, egui::Button::new("Editar organización"))
-                .clicked()
-            {
-                self.catalog.editor_open = true;
-            }
-        } else {
-            ui.label(
-                RichText::new("Selecciona una imagen para ver sus detalles y organizarla.")
-                    .color(MUTED),
-            );
-        }
-        if let Some(error) = &self.detail.error {
-            ui.add_space(8.0);
-            ui.colored_label(Color32::LIGHT_RED, error);
-        }
-        ui.add_space(8.0);
-        egui::CollapsingHeader::new("Ubicación").show(ui, |ui| {
-            if let Some(path) = &self.path {
-                ui.add(egui::Label::new(RichText::new(path.to_string_lossy()).small()).wrap());
-                if ui.button("Copiar ruta").clicked() {
-                    ui.ctx().copy_text(path.to_string_lossy().into_owned());
-                }
+            if ui.button("Copiar ruta").clicked() {
+                ui.ctx().copy_text(theme::display_path(&path));
             }
         });
-        if !self.grid_view && !self.entries.is_empty() {
-            egui::CollapsingHeader::new(format!("En esta carpeta · {}", self.entries.len())).show(
-                ui,
-                |ui| {
-                    let mut chosen = None;
-                    let row_height = ui.spacing().interact_size.y;
-                    egui::ScrollArea::vertical()
-                        .id_salt("folder-list")
-                        .max_height(200.0)
-                        .show_rows(ui, row_height, self.entries.len(), |ui, rows| {
-                            for index in rows {
-                                let entry = &self.entries[index];
-                                if ui
-                                    .add(
-                                        egui::Button::selectable(
-                                            self.path.as_ref() == Some(&entry.path),
-                                            entry
-                                                .path
-                                                .file_name()
-                                                .unwrap_or_default()
-                                                .to_string_lossy(),
-                                        )
-                                        .truncate(),
+        if let Some(error) = &self.detail.error {
+            ui.colored_label(Color32::LIGHT_RED, error);
+        }
+        if !self.grid_view && !self.viewer_entries().is_empty() {
+            let count = self.viewer_entries().len();
+            egui::CollapsingHeader::new(format!("En esta vista · {count}")).show(ui, |ui| {
+                let mut chosen = None;
+                egui::ScrollArea::vertical()
+                    .id_salt("folder-list")
+                    .max_height(180.0)
+                    .show_rows(ui, 28.0, count, |ui, rows| {
+                        for index in rows {
+                            let entry = &self.viewer_entries()[index];
+                            if ui
+                                .add(
+                                    egui::Button::selectable(
+                                        self.path.as_ref() == Some(&entry.path),
+                                        entry
+                                            .path
+                                            .file_name()
+                                            .unwrap_or_default()
+                                            .to_string_lossy(),
                                     )
-                                    .on_hover_text(entry.path.to_string_lossy())
-                                    .clicked()
-                                {
-                                    chosen = Some(entry.path.clone());
-                                }
+                                    .truncate(),
+                                )
+                                .clicked()
+                            {
+                                chosen = Some(entry.path.clone());
                             }
-                        });
-                    if let Some(path) = chosen {
-                        self.open_image(path);
-                    }
-                },
-            );
+                        }
+                    });
+                if let Some(path) = chosen {
+                    self.open_image(path);
+                }
+            });
+        }
+    }
+
+    fn viewer_entries(&self) -> &[FolderEntry] {
+        if self.viewer_filtered {
+            &self.catalog.filtered
+        } else {
+            &self.entries
         }
     }
 
@@ -882,7 +1167,7 @@ impl RasteraApp {
             return;
         }
         let position = self
-            .entries
+            .viewer_entries()
             .iter()
             .position(|entry| Some(&entry.path) == self.path.as_ref());
         ui.horizontal_wrapped(|ui| {
@@ -899,7 +1184,7 @@ impl RasteraApp {
                 }
                 if ui
                     .add_enabled(
-                        position.is_some_and(|index| index + 1 < self.entries.len()),
+                        position.is_some_and(|index| index + 1 < self.viewer_entries().len()),
                         egui::Button::new("→"),
                     )
                     .on_hover_text("Imagen siguiente · Flecha derecha")
@@ -909,9 +1194,13 @@ impl RasteraApp {
                 }
                 if let Some(position) = position {
                     ui.label(
-                        RichText::new(format!("{} / {}", position + 1, self.entries.len()))
-                            .small()
-                            .color(MUTED),
+                        RichText::new(format!(
+                            "{} / {}",
+                            position + 1,
+                            self.viewer_entries().len()
+                        ))
+                        .small()
+                        .color(MUTED),
                     );
                 }
                 ui.separator();
@@ -981,7 +1270,7 @@ impl RasteraApp {
         ui.add_space(8.0);
         let (canvas, response) = ui.allocate_exact_size(ui.available_size(), Sense::drag());
         let painter = ui.painter().with_clip_rect(canvas);
-        painter.rect_filled(canvas, 0.0, Color32::from_rgb(22, 23, 25));
+        painter.rect_filled(canvas, 0.0, theme::CANVAS);
         if let Some(preview) = &self.preview {
             let pixels_per_point = ui.ctx().pixels_per_point();
             let fit = (((canvas.width() - 32.0) / preview.source_size.x)
@@ -1144,101 +1433,56 @@ impl eframe::App for RasteraApp {
             }
         }
         self.shortcuts(&ctx);
-        egui::Frame::NONE.inner_margin(8).show(ui, |ui| {
-            self.header(ui);
-            for error in [&self.error, &self.folder_error, &self.catalog.error]
-                .into_iter()
-                .flatten()
-            {
+        egui::Panel::top("workspace-header")
+            .frame(theme::panel_frame())
+            .show(ui, |ui| self.header(ui));
+        egui::Panel::bottom("workspace-status")
+            .frame(
                 egui::Frame::NONE
-                    .fill(Color32::from_rgb(57, 32, 36))
-                    .corner_radius(6)
-                    .inner_margin(10)
-                    .show(ui, |ui| {
-                        ui.colored_label(Color32::from_rgb(255, 177, 170), error);
-                    });
-            }
-            let height = (ui.available_height() - 38.0).max(100.0);
-            let show_details =
-                self.inspector_open && ui.available_width() >= 944.0 && self.path.is_some();
-            let sidebar = if show_details { 216.0 } else { 0.0 };
-            let width =
-                (ui.available_width() - sidebar - if show_details { 8.0 } else { 0.0 }).max(100.0);
-            ui.horizontal_top(|ui| {
-                ui.allocate_ui_with_layout(
-                    egui::vec2(width, height),
-                    Layout::top_down(Align::Min),
-                    |ui| {
-                        ui.set_min_height(height);
-                        ui.set_min_width(width);
-                        if self.grid_view && self.folder.is_some() {
-                            self.library(ui);
-                        } else {
-                            self.viewer(ui);
-                        }
-                    },
-                );
-                if show_details {
+                    .fill(theme::SURFACE)
+                    .inner_margin(egui::Margin::symmetric(12, 5)),
+            )
+            .show(ui, |ui| self.status_bar(ui));
+        if self.error.is_some() || self.folder_error.is_some() || self.catalog.error.is_some() {
+            egui::Panel::top("workspace-errors")
+                .frame(
                     egui::Frame::NONE
-                        .fill(theme::SURFACE)
-                        .corner_radius(0)
-                        .inner_margin(8)
-                        .show(ui, |ui| {
-                            ui.set_width(200.0);
-                            ui.set_min_height((height - 16.0).max(0.0));
-                            egui::ScrollArea::vertical()
-                                .id_salt("inspector-scroll")
-                                .max_height((height - 16.0).max(0.0))
-                                .show(ui, |ui| {
-                                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
-                                        self.inspector(ui)
-                                    });
-                                });
-                        });
-                }
-            });
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                let busy =
-                    self.loading || self.folder_loading || self.grid.busy() || self.detail.busy();
-                ui.label(
-                    RichText::new(if self.dialog.is_some() {
-                        "Esperando selección…"
-                    } else if busy {
-                        "Cargando…"
-                    } else {
-                        "Listo"
-                    })
-                    .small()
-                    .color(MUTED),
-                );
-                if self.grid_view && self.folder.is_some() {
-                    ui.separator();
-                    ui.label(
-                        RichText::new(format!(
-                            "{} / {} imágenes",
-                            self.catalog.filtered.len(),
-                            self.entries.len()
-                        ))
-                        .small()
-                        .color(MUTED),
-                    );
-                }
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(
-                        RichText::new(if self.grid_view {
-                            "Ctrl+clic: añadir · Shift+clic: rango · Doble clic: abrir"
-                        } else if self.path.is_some() {
-                            "Rueda: zoom · Arrastrar: desplazar · Home: ajustar"
-                        } else {
-                            "Ctrl+O: imagen · Ctrl+Shift+O: carpeta"
-                        })
-                        .small()
-                        .color(MUTED),
-                    );
+                        .fill(Color32::from_rgb(57, 32, 36))
+                        .inner_margin(10),
+                )
+                .show(ui, |ui| {
+                    for error in [&self.error, &self.folder_error, &self.catalog.error]
+                        .into_iter()
+                        .flatten()
+                    {
+                        ui.colored_label(Color32::from_rgb(255, 177, 170), error);
+                    }
                 });
+        }
+        let show_details =
+            self.inspector_open && ctx.viewport_rect().width() >= 980.0 && self.path.is_some();
+        if show_details {
+            egui::Panel::right("workspace-inspector")
+                .default_size(248.0)
+                .size_range(220.0..=360.0)
+                .resizable(true)
+                .frame(theme::panel_frame())
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("inspector-scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| self.inspector(ui));
+                });
+        }
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.fill(theme::BACKGROUND).inner_margin(12))
+            .show(ui, |ui| {
+                if self.grid_view && self.folder.is_some() {
+                    self.library(ui);
+                } else {
+                    self.viewer(ui);
+                }
             });
-        });
         self.auxiliary_windows(&ctx);
         #[cfg(feature = "capture")]
         if self.catalog.ready
