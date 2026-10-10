@@ -47,6 +47,8 @@ pub struct RasteraApp {
     pan: Vec2,
     #[cfg(feature = "capture")]
     capture_requested: bool,
+    #[cfg(feature = "capture")]
+    capture_ready_at: Option<std::time::Instant>,
 }
 
 impl RasteraApp {
@@ -97,6 +99,8 @@ impl RasteraApp {
             pan: Vec2::ZERO,
             #[cfg(feature = "capture")]
             capture_requested: false,
+            #[cfg(feature = "capture")]
+            capture_ready_at: None,
         };
         if let Some(path) = initial {
             app.open(path);
@@ -433,12 +437,19 @@ impl RasteraApp {
         } else if !self.capture_requested
             && !self.loading
             && !self.folder_loading
+            && (self.path.is_none() || self.catalog.ready)
             && !self.grid.busy()
             && !self.batch.busy
             && !self.detail.busy()
         {
-            self.capture_requested = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+            let ready_at = self
+                .capture_ready_at
+                .get_or_insert_with(std::time::Instant::now);
+            if ready_at.elapsed() >= std::time::Duration::from_millis(300) {
+                self.capture_requested = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+            }
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
         if self.capture_requested {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
@@ -1203,6 +1214,13 @@ impl eframe::App for RasteraApp {
             });
         });
         self.auxiliary_windows(&ctx);
+        #[cfg(feature = "capture")]
+        if self.catalog.ready
+            && std::env::var_os("RASTERA_CAPTURE_PANEL").as_deref()
+                == Some(std::ffi::OsStr::new("organization"))
+        {
+            self.catalog.editor_open = true;
+        }
         self.catalog.editor(
             &ctx,
             self.path.as_deref(),

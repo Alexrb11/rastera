@@ -158,6 +158,13 @@ impl Batch {
                         Ok(plan) => {
                             self.plan = Some(plan);
                             self.error = None;
+                            #[cfg(feature = "capture")]
+                            if std::env::var("RASTERA_CAPTURE_TUTORIAL").as_deref() == Ok("results")
+                                && std::env::var_os("RASTERA_CAPTURE_TO").is_some()
+                            {
+                                self.acknowledged = true;
+                                self.execute();
+                            }
                         }
                         Err(error) => self.error = Some(error.to_string()),
                     }
@@ -267,6 +274,12 @@ impl Batch {
         self.select(paths);
         self.destination = destination.to_string_lossy().into_owned();
         self.destination_path = Some(destination);
+        if std::env::var_os("RASTERA_CAPTURE_TUTORIAL").is_some() {
+            self.recipe.format = ExportFormat::Jpeg;
+            self.recipe.jpeg_quality = 90;
+            self.edge = 1000;
+            self.acknowledged = true;
+        }
         self.prepare();
     }
     #[cfg(feature = "capture")]
@@ -419,6 +432,10 @@ impl Batch {
                         ui.add(egui::Label::new(path.to_string_lossy()).wrap());
                         if ui.button("Copiar ruta del registro").clicked() { ctx.copy_text(path.to_string_lossy().into_owned()); }
                     });
+                }
+                #[cfg(feature = "capture")]
+                if matches!(std::env::var("RASTERA_CAPTURE_TUTORIAL").as_deref(), Ok("review" | "results")) && self.plan.is_some() {
+                    ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
                 }
                 });
                 ui.separator();

@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-10",
+  "app": "Rastera 0.1.0",
+  "photos": {
+    "generator": "Herramienta integrada image_gen (modo built-in)",
+    "files": [
+      "ejemplos/01-taza.png",
+      "ejemplos/02-cuenco.png",
+      "ejemplos/03-jarron.png"
+    ],
+    "prompts": [
+      "Use case: product-mockup. Asset: example photograph for a desktop image organizer tutorial, not a UI mockup. Create a photorealistic square 2048x2048 catalog photograph of one handmade off-white ceramic coffee cup with a small handle, on a pale warm-gray studio tabletop. Soft window light, realistic glaze texture, entire cup visible, uncluttered neutral background. No text, logos, frames, borders or collage.",
+      "Use case: product-mockup. Asset: example photograph for a desktop image organizer tutorial, not a UI mockup. Create a photorealistic square 2048x2048 catalog photograph of one handmade sage-green ceramic bowl on a pale warm-gray studio tabletop. Soft window light, realistic glaze texture, entire bowl visible, uncluttered neutral background. No text, logos, frames, borders or collage.",
+      "Use case: product-mockup. Asset: example photograph for a desktop image organizer tutorial, not a UI mockup. Create a photorealistic square 2048x2048 catalog photograph of one handmade terracotta ceramic vase with two delicate dry stems on a pale warm-gray studio tabletop. Soft window light, realistic clay texture, entire vase visible, uncluttered neutral background. No text, logos, frames, borders or collage."
+    ]
+  },
+  "screenshots": {
+    "source": "Renderizado nativo de Rastera con la característica opcional capture",
+    "preset": "Catálogo aislado de demostración: taza y cuenco favoritos y etiquetados cerámica, aprobada; jarrón cerámica, revisar.",
+    "pixel_size": [
+      1770,
+      1170
+    ],
+    "ui_size": [
+      1180,
+      780
+    ],
+    "windows_scaling": "150%"
+  },
+  "exports": {
+    "source": "Lote real ejecutado por Rastera, sin modificar los originales",
+    "recipe": {
+      "format": "JPEG",
+      "quality": 90,
+      "max_edge": 1000,
+      "rotation": 0,
+      "background": [
+        255,
+        255,
+        255
+      ]
+    }
+  }
+}

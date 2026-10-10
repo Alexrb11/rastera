@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Tutorial ilustrado de Rastera: elegir fotos, organizar con etiquetas y exportar copias por lotes.">
+<title>Rastera · Guía práctica con imágenes</title>
+<style>
+:root{color-scheme:light;--ink:#24272b;--muted:#62676e;--line:#dce0e4;--blue:#245b86;--paper:#fff;--soft:#f5f6f7}
+*{box-sizing:border-box}
+html{scroll-padding-top:84px}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 "Segoe UI",Arial,sans-serif}
+a{color:var(--blue);text-underline-offset:3px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:3px solid #3877a6;outline-offset:4px}
+.top{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid var(--line)}
+.top-inner{max-width:1240px;margin:auto;padding:12px 28px;display:flex;align-items:center;gap:18px}
+.brand{font-size:19px;font-weight:650;letter-spacing:.02em;color:var(--ink);text-decoration:none}
+.top-label{border-left:1px solid var(--line);padding-left:18px;color:var(--muted);font-size:14px}
+.print{margin-left:auto;padding:4px 12px;border:1px solid var(--line);background:white;border-radius:2px;font-size:13px}
+.layout{max-width:1240px;margin:auto;display:grid;grid-template-columns:214px minmax(0,1fr);gap:48px;padding:36px 28px 72px}
+nav{position:sticky;top:94px;align-self:start;font-size:14px}
+nav p{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+nav a{display:block;text-decoration:none;color:var(--muted);padding:7px 10px;border-left:2px solid transparent}
+nav a[aria-current="location"]{border-color:var(--blue);background:var(--soft);color:var(--blue)}
+.nav-note{margin-top:24px;border-top:1px solid var(--line);padding:16px 10px;font-size:12px;color:var(--muted)}
+main{min-width:0}
+.edition{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+h1{font-size:38px;line-height:1.2;font-weight:650;letter-spacing:-.03em;margin:0 0 18px;max-width:720px}
+.intro{font-size:19px;line-height:1.6;max-width:760px;margin:0 0 24px}
+.route{font-size:14px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);color:var(--muted)}
+.route b{color:var(--ink);font-weight:600}
+section{margin-top:52px;scroll-margin-top:84px}
+h2{font-size:26px;line-height:1.3;letter-spacing:-.015em;margin:0 0 16px;font-weight:650}
+h3{font-size:18px;line-height:1.4;margin:28px 0 10px}
+.number{color:var(--muted);font-size:14px;font-weight:400;margin-right:12px}
+p{margin:10px 0 18px}
+.goal{border-left:3px solid var(--line);padding:3px 0 3px 16px;color:var(--muted);margin:18px 0 24px}
+.goal strong{color:var(--ink)}
+figure{margin:22px 0}
+figcaption{color:var(--muted);font-size:13px;line-height:1.5;margin-top:9px}
+.examples{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.examples figure{margin:6px 0}
+.examples img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:contain;border:1px solid var(--line)}
+.file{display:block;color:var(--ink);font-weight:600}
+.download{display:inline;padding:0;border:0;background:none;color:var(--blue);text-decoration:underline;text-underline-offset:3px;font-size:13px}
+.shot{margin:24px 0}
+.shot button{display:block;width:100%;padding:0;border:1px solid #44484e;background:#1d1e20;line-height:0}
+.shot img{display:block;width:100%;height:auto}
+.zoom-hint{float:right;font-size:12px}
+ol.steps{padding-left:25px;margin:20px 0}
+.steps li{padding-left:6px;margin:0 0 14px}
+.steps li::marker{color:var(--blue);font-weight:600}
+kbd,code{font:13px/1.4 Consolas,"Courier New",monospace;background:var(--soft);border:1px solid var(--line);padding:2px 5px;border-radius:2px;overflow-wrap:anywhere}
+kbd{white-space:nowrap}
+.note{background:var(--soft);padding:14px 18px;border-left:3px solid #929aa3;font-size:14px;margin:22px 0}
+.outcome{font-size:15px;margin:20px 0;padding-top:12px;border-top:1px solid var(--line)}
+.table-wrap{overflow:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;margin:16px 0}
+th,td{text-align:left;vertical-align:top;padding:11px 12px;border-bottom:1px solid var(--line)}
+th{background:var(--soft);font-weight:600}
+td:first-child{font-weight:600}
+.comparison{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.comparison img{display:block;max-width:100%;width:100%;height:auto;aspect-ratio:1;object-fit:contain;border:1px solid var(--line)}
+.comparison figure{margin:8px 0}
+details{border-top:1px solid var(--line);padding:12px 0}
+summary{cursor:pointer;font-weight:600}
+footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+dialog{width:min(96vw,1700px);max-height:94vh;padding:16px;border:1px solid var(--line);background:white}
+dialog::backdrop{background:rgba(0,0,0,.78)}
+.dialog-head{display:flex;gap:16px;align-items:center;margin-bottom:12px}
+.dialog-head p{margin:0;font-size:14px}
+.dialog-head button{margin-left:auto;padding:4px 12px;border:1px solid var(--line);background:white}
+dialog img{display:block;width:100%;height:auto}
+@media(max-width:900px){.layout{grid-template-columns:1fr;gap:22px;padding:24px 20px 50px}nav{position:static;border-bottom:1px solid var(--line);padding-bottom:14px}nav p,.nav-note{display:none}nav a{display:inline-block;border-left:0;padding:5px 9px;font-size:13px}h1{font-size:32px}.top-inner{padding:10px 20px}}
+@media(max-width:540px){body{font-size:15px}.top-label{display:none}.examples{gap:9px}.examples figcaption{font-size:11px}.comparison{gap:12px}h1{font-size:29px}h2{font-size:23px}.zoom-hint{float:none;display:block;margin-top:4px}th,td{padding:9px 8px}.file{overflow-wrap:anywhere}}
+@media print{@page{size:A4;margin:16mm}body{font-size:10.5pt}.top,nav,dialog,.zoom-hint,.download{display:none!important}.layout{display:block;padding:0;max-width:none}h1{font-size:27pt}h2{font-size:18pt}section{margin-top:24pt;break-before:auto}h2,h3{break-after:avoid}figure,.note,.goal,.comparison,tr{break-inside:avoid}.shot img{max-height:125mm;object-fit:contain}.intro{font-size:12pt}.examples img{max-height:45mm}footer{font-size:8pt}.route{font-size:9pt}a{color:inherit}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-inner"><a href="#inicio" class="brand">Rastera</a><span class="top-label">Manual de uso · Tutorial ilustrado</span><button class="print" id="print" type="button">Imprimir / guardar PDF</button></div></header>
+<div class="layout">
+<nav aria-label="Índice del tutorial">
+<p>En esta guía</p>
+<a href="#inicio" aria-current="location">Para qué sirve</a>
+<a href="#preparar">Material de práctica</a>
+<a href="#elegir">01 · Elegir fotografías</a>
+<a href="#organizar">02 · Etiquetar y encontrar</a>
+<a href="#exportar">03 · Preparar para publicar</a>
+<a href="#compartir">04 · Compartir copias</a>
+<a href="#atajos">Atajos y dudas</a>
+<div class="nav-note">Capturas reales de Rastera.<br>Fotos de ejemplo generadas con IA.<br>Guía del 10 de octubre de 2026.</div>
+</nav>
+<main>
+<div id="inicio">
+<p class="edition">Rastera 0.1.0 · Windows · Primeros pasos</p>
+<h1>De una carpeta de fotos a una selección lista para usar</h1>
+<p class="intro">Rastera te permite revisar imágenes, recordar cuáles te interesan y preparar varias copias de una vez. Esta guía recorre ese trabajo con tres fotografías de productos.</p>
+<div class="route"><b>Abrir</b> una carpeta &nbsp;→&nbsp; <b>Elegir</b> imágenes &nbsp;→&nbsp; <b>Organizar</b> la selección &nbsp;→&nbsp; <b>Exportar</b> copias</div>
+<h3>Cuándo puede ayudarte</h3>
+<div class="table-wrap"><table>
+<thead><tr><th scope="col">Si trabajas con…</th><th scope="col">Puedes usar Rastera para…</th></tr></thead>
+<tbody>
+<tr><td>Fotos de una tienda</td><td>Elegir las imágenes de los productos y generar copias con el mismo formato y límite de tamaño.</td></tr>
+<tr><td>Imágenes para diseño o contenido</td><td>Marcar recursos útiles, buscarlos por etiquetas y preparar archivos para una entrega.</td></tr>
+<tr><td>Fotos personales</td><td>Revisar una carpeta de viaje o familia y guardar favoritos sin modificar las fotografías.</td></tr>
+<tr><td>Imágenes que vas a compartir</td><td>Exportar versiones que eliminen los metadatos originales, como EXIF y GPS, conservando tus originales.</td></tr>
+</tbody></table></div>
+</div>
+<section id="preparar">
+<h2>Material de práctica</h2>
+<p>El ejemplo es una pequeña colección de cerámica. Las tres fotografías son PNG de <strong>1.254 × 1.254 píxeles</strong>. Descárgalas en una misma carpeta llamada <code>Originales</code> y crea, junto a ella, otra carpeta vacía llamada <code>Para-web</code>.</p>
+<div class="examples">
+<figure><img id="foto-taza" src="ejemplos/01-taza.png" alt="Taza de cerámica blanca sobre una mesa clara" width="1254" height="1254"><figcaption><span class="file">01-taza.png</span><button type="button" class="download" data-download="foto-taza" data-name="01-taza.png">Descargar fotografía</button></figcaption></figure>
+<figure><img id="foto-cuenco" src="ejemplos/02-cuenco.png" alt="Cuenco de cerámica verde sobre una mesa clara" width="1254" height="1254"><figcaption><span class="file">02-cuenco.png</span><button type="button" class="download" data-download="foto-cuenco" data-name="02-cuenco.png">Descargar fotografía</button></figcaption></figure>
+<figure><img id="foto-jarron" src="ejemplos/03-jarron.png" alt="Jarrón de terracota con tallos secos" width="1254" height="1254"><figcaption><span class="file">03-jarron.png</span><button type="button" class="download" data-download="foto-jarron" data-name="03-jarron.png">Descargar fotografía</button></figcaption></figure>
+</div>
+<p class="note"><strong>Para seguir el tutorial:</strong> abre Rastera y ten preparadas las dos carpetas. Las capturas muestran estados de demostración ya configurados; los pasos te indican cómo reproducirlos. Los nombres de las carpetas de las capturas pueden diferir de los tuyos.</p>
+</section>
+<section id="elegir">
+<h2><span class="number">01</span>Elegir las fotografías que quieres usar</h2>
+<p class="goal"><strong>Situación:</strong> has terminado una sesión de fotos y necesitas decidir cuáles vas a publicar.</p>
+<ol class="steps">
+<li>Pulsa <strong>Abrir carpeta…</strong> y elige <code>Originales</code>. También puedes arrastrar esa carpeta a Rastera o usar <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>O</kbd>.</li>
+<li>En <strong>Biblioteca</strong>, haz clic en una miniatura. A la derecha, <strong>Propiedades</strong> muestra sus dimensiones, formato y tamaño de archivo.</li>
+<li>Usa <kbd>Ctrl</kbd> + clic para añadir o retirar imágenes de la selección. Con <kbd>Shift</kbd> + clic seleccionas un rango. Para este ejercicio, pulsa <strong>Seleccionar todo</strong>: el contador debe indicar <strong>3 seleccionadas</strong>.</li>
+</ol>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura de la biblioteca"><img src="capturas/biblioteca.png" alt="Biblioteca de Rastera con las tres fotos seleccionadas, contador 3 seleccionadas y panel de propiedades" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 1.</strong> El borde azul y la marca identifican las imágenes seleccionadas. Las insignias Favorita se añadirán en el caso 02.<span class="zoom-hint">Pulsa la captura para ampliarla.</span></figcaption></figure>
+<h3>Revisar una imagen con más detalle</h3>
+<p>Haz doble clic en la taza para abrir el <strong>Visor</strong>. Usa la rueda para ampliar y arrastra para desplazarte. <strong>100%</strong> muestra un píxel de imagen por píxel físico de pantalla; <strong>Ajustar</strong> o <kbd>Home</kbd> vuelve a mostrar la imagen completa. Si entraste desde una carpeta, las flechas permiten pasar a la anterior o siguiente.</p>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura del visor"><img src="capturas/visor.png" alt="Visor de Rastera mostrando la taza completa y los controles Ajustar, 100% y Exportar imagen" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 2.</strong> La taza ajustada a la ventana. Esta captura abre el archivo directamente; al entrar desde Biblioteca también tendrás navegación por la carpeta.</figcaption></figure>
+<p class="outcome"><strong>Resultado:</strong> tienes identificadas las imágenes que quieres utilizar. La selección sirve para trabajar ahora; los favoritos y las etiquetas permiten recordarlas en próximas sesiones.</p>
+</section>
+<section id="organizar">
+<h2><span class="number">02</span>Etiquetar y encontrar imágenes después</h2>
+<p class="goal"><strong>Situación:</strong> quieres distinguir las fotos aprobadas de las que aún tienes que revisar.</p>
+<ol class="steps">
+<li>Vuelve a <strong>Biblioteca</strong>, selecciona la taza y abre <strong>Propiedades → Editar organización</strong>.</li>
+<li>Marca <strong>Favorita</strong>, escribe <code>cerámica, aprobada</code> y pulsa <strong>Guardar cambios</strong>.</li>
+<li>Repite con el cuenco. Para el jarrón, usa <code>cerámica, revisar</code> y deja Favorita sin marcar. La organización se edita <strong>imagen por imagen</strong>.</li>
+</ol>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura de edición de etiquetas"><img src="capturas/organizacion.png" alt="Ventana Organizar imagen con Favorita marcada y etiquetas cerámica, aprobada" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 3.</strong> La taza marcada como favorita y etiquetada. Estos datos se guardan en el catálogo local de Rastera.</figcaption></figure>
+<h3>Encontrar solo las fotos aprobadas</h3>
+<p>Pulsa <strong>Deseleccionar</strong> y escribe <code>aprobada</code> en <strong>Buscar nombre o etiqueta</strong>. Deben aparecer la taza y el cuenco: <strong>2 / 3 imágenes</strong>. También puedes activar <strong>Solo favoritos</strong> o filtrar por formato. Para exportar solo estos resultados, pulsa ahora <strong>Seleccionar todo</strong>.</p>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura de búsqueda por etiqueta"><img src="capturas/busqueda.png" alt="Búsqueda de aprobada en Rastera con dos resultados: taza y cuenco" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 4.</strong> Buscar una etiqueta recupera las imágenes asociadas, aunque esa palabra no esté en sus nombres.</figcaption></figure>
+<p class="note"><strong>Ten en cuenta la selección:</strong> cambiar un filtro no elimina las imágenes seleccionadas que queden ocultas. Antes de elegir un nuevo grupo, pulsa Deseleccionar. Restablecer limpia los filtros, pero mantiene la selección.</p>
+<p class="outcome"><strong>Resultado:</strong> puedes volver a localizar las fotos aprobadas. Los favoritos y etiquetas permanecen entre sesiones en este equipo; no se escriben dentro de las fotografías. Si mueves o renombras un archivo fuera de Rastera, su nueva ruta no hereda automáticamente la organización anterior.</p>
+</section>
+<section id="exportar">
+<h2><span class="number">03</span>Preparar varias imágenes para publicar</h2>
+<p class="goal"><strong>Situación:</strong> necesitas copias para una ficha de producto o una entrega, con un formato y tamaño uniformes.</p>
+<p>Para practicar con las tres fotos, pulsa <strong>Restablecer</strong>, <strong>Deseleccionar</strong> y <strong>Seleccionar todo</strong>. Usaremos JPEG, calidad 90 y un límite de 1.000 píxeles en el lado mayor. Es una receta de ejemplo; ajústala a los requisitos de tu publicación.</p>
+<ol class="steps">
+<li>Pulsa <strong>Exportar selección (3)</strong>.</li>
+<li>En <strong>Elegir carpeta…</strong>, elige <code>Para-web</code>. Debe existir y ser distinta de la carpeta de los originales.</li>
+<li>Selecciona <strong>JPEG</strong>, deja <strong>Sin rotación</strong>, activa <strong>Limitar lado mayor</strong> y escribe <strong>1000 px</strong>. Ajusta <strong>Calidad JPEG</strong> a <strong>90</strong>.</li>
+<li>Lee la información de <strong>Color y metadatos de las copias</strong> y marca la casilla de aceptación. Las copias se convierten a sRGB y eliminan los metadatos originales.</li>
+</ol>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura de la receta de exportación"><img src="capturas/configuracion.png" alt="Exportar copias configurado con JPEG, límite de 1000 píxeles, calidad 90 y aceptación de la política" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 5.</strong> Configuración usada para el lote. La captura se tomó después de preparar el plan; la pestaña Revisar ya está activa.</figcaption></figure>
+<ol class="steps" start="5">
+<li>Pulsa <strong>Revisar salidas</strong>. Desplázate dentro del panel para comprobar los tres nombres y las dimensiones: <strong>1.000 × 1.000 px</strong>.</li>
+<li>Si el plan es correcto, pulsa <strong>Exportar 3 copias</strong>. Si aparece un conflicto porque el archivo de destino ya existe, elige otra carpeta vacía y vuelve a revisar.</li>
+</ol>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura de revisión del lote"><img src="capturas/revision.png" alt="Plan de exportación de tres copias JPEG de 1000 por 1000 píxeles antes de ejecutarlo" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 6.</strong> Revisión de nombres y dimensiones. Los botones de exportar y cerrar permanecen visibles al desplazar el contenido.</figcaption></figure>
+<p>Al terminar, comprueba que las tres filas muestran <strong>Publicada</strong> y que el resumen indica <strong>3 publicadas · 0 sin publicar · Finalizado</strong>.</p>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura de resultados del lote"><img src="capturas/resultados.png" alt="Resultado real de la exportación: tres copias publicadas y cero sin publicar" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 7.</strong> Resultado de un lote ejecutado realmente con las imágenes de práctica.</figcaption></figure>
+<h3>Qué cambió en el archivo</h3>
+<div class="comparison">
+<figure><img src="ejemplos/01-taza.png" alt="Original PNG de la taza antes de exportar" width="1254" height="1254" loading="lazy"><figcaption><span class="file">Original · 01-taza.png</span>PNG · 1.254 × 1.254 px · 1,68 MiB</figcaption></figure>
+<figure><img id="copia-taza" src="copias/01-taza-rastera.jpg" alt="Copia JPEG de la taza exportada por Rastera" width="1000" height="1000" loading="lazy"><figcaption><span class="file">Copia · 01-taza-rastera.jpg</span>JPEG · 1.000 × 1.000 px · 108,4 KiB<br><button type="button" class="download" data-download="copia-taza" data-name="01-taza-rastera.jpg">Descargar copia exportada</button></figcaption></figure>
+</div>
+<p>En este ejemplo, la copia ocupa aproximadamente <strong>un 94% menos</strong>. Son tamaños medidos de estos archivos, no una promesa para todas las fotos. JPEG usa compresión con pérdidas; revisa el detalle antes de entregar una imagen.</p>
+<p class="outcome"><strong>Resultado:</strong> tienes tres archivos nuevos, con el sufijo <code>-rastera</code>, preparados con una misma receta. Los PNG originales permanecen intactos. El límite mantiene la proporción y nunca amplía una imagen pequeña.</p>
+</section>
+<section id="compartir">
+<h2><span class="number">04</span>Compartir copias sin los metadatos originales</h2>
+<p class="goal"><strong>Situación:</strong> vas a compartir fotos personales o de trabajo y no necesitas incluir la ubicación GPS ni otros datos de la cámara.</p>
+<p>Utiliza el mismo proceso de exportación del caso anterior. Rastera elimina de las copias los metadatos originales, incluidos <strong>EXIF, GPS y XMP</strong>, y añade un perfil de color sRGB. Comprueba las imágenes exportadas y comparte los archivos de <code>Para-web</code>.</p>
+<p>Esto elimina esos datos incrustados, pero no oculta lo que se ve en la fotografía ni cambia un nombre de archivo que contenga información personal. Las fotos generadas de este tutorial no contienen GPS: aquí se explica el comportamiento de la exportación, sin simular una comparación de ubicación.</p>
+<h3>Elegir el formato adecuado</h3>
+<div class="table-wrap"><table>
+<thead><tr><th scope="col">Formato</th><th scope="col">Cuándo usarlo en este flujo</th><th scope="col">Transparencia</th></tr></thead>
+<tbody>
+<tr><td>JPEG</td><td>Fotografías cuando la entrega admite compresión con pérdidas. La calidad es configurable.</td><td>Se reemplaza por el fondo elegido.</td></tr>
+<tr><td>PNG</td><td>Gráficos o archivos que quieras recodificar sin la compresión con pérdidas de JPEG.</td><td>Se conserva.</td></tr>
+<tr><td>WebP sin pérdidas</td><td>Cuando el destino admita WebP y necesites una exportación sin pérdidas en la codificación.</td><td>Se conserva.</td></tr>
+</tbody></table></div>
+<p class="note">La conversión de color o el redimensionado pueden cambiar los píxeles aunque el formato use codificación sin pérdidas. El soporte actual es JPEG, PNG y WebP estáticos SDR de 8 bits; RAW, HDR y gestión del perfil del monitor quedan fuera de esta versión.</p>
+<p class="outcome"><strong>Resultado:</strong> compartes copias preparadas para su destino y conservas los archivos originales con sus datos.</p>
+</section>
+<section id="atajos">
+<h2>Atajos y dudas durante el trabajo</h2>
+<div class="table-wrap"><table>
+<thead><tr><th scope="col">Acción</th><th scope="col">Cómo hacerlo</th></tr></thead>
+<tbody>
+<tr><td>Abrir carpeta / imagen</td><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>O</kbd> / <kbd>Ctrl</kbd> + <kbd>O</kbd></td></tr>
+<tr><td>Añadir a la selección</td><td><kbd>Ctrl</kbd> + clic</td></tr>
+<tr><td>Seleccionar un rango</td><td><kbd>Shift</kbd> + clic</td></tr>
+<tr><td>Seleccionar resultados del filtro</td><td>Seleccionar todo o <kbd>Ctrl</kbd> + <kbd>A</kbd> en Biblioteca, fuera de un campo de texto</td></tr>
+<tr><td>Abrir visor / ajustar imagen</td><td>Doble clic en la miniatura / <kbd>Home</kbd> en el visor</td></tr>
+<tr><td>Pasar a la imagen anterior o siguiente</td><td><kbd>←</kbd> / <kbd>→</kbd> en el visor al navegar por una carpeta</td></tr>
+<tr><td>Quitar selección / volver a Biblioteca</td><td><kbd>Esc</kbd>, cuando no haya otra ventana abierta</td></tr>
+</tbody></table></div>
+<details open><summary>No encuentro una imagen en la cuadrícula</summary><p>Prueba Restablecer para limpiar los filtros. Rastera muestra los formatos compatibles de la carpeta abierta y no recorre subcarpetas. Si has añadido archivos desde el explorador, pulsa Actualizar; esta acción también limpia la selección.</p></details>
+<details open><summary>Se interrumpió un lote</summary><p>Las copias ya publicadas permanecen. Abre <strong>Herramientas → Recuperar / ver lote → Recuperar un lote…</strong> y elige el archivo <code>rastera-export-*.sqlite</code> de la carpeta de destino. Revisa la comprobación de archivos y exporta solo los pendientes verificados. Los conflictos requieren revisión y no se reanuda nada automáticamente.</p></details>
+<details open><summary>Solo quiero exportar una imagen</summary><p>En el visor, <strong>Exportar imagen</strong> usa únicamente la imagen abierta, aunque exista una selección anterior en Biblioteca.</p></details>
+<details open><summary>Una imagen no se puede abrir o exportar</summary><p>Comprueba el mensaje que muestra Rastera. Los archivos dañados, formatos o perfiles de color no compatibles y algunas imágenes demasiado grandes para el presupuesto de memoria pueden rechazarse.</p></details>
+<footer>
+<p><strong>Sobre esta guía.</strong> Capturas del renderizado real de Rastera 0.1.0 en Windows, tomadas el 10 de octubre de 2026. Se preparó un catálogo de demostración aislado para las etiquetas y favoritos; las copias JPEG se generaron con el motor de exportación de la aplicación. Las fotografías de cerámica son ejemplos generados con IA mediante la herramienta integrada de generación de imágenes.</p>
+<p>Este documento funciona sin conexión. Puedes ampliar las capturas, descargar las fotos de práctica e imprimir la guía. La interfaz puede cambiar durante el desarrollo.</p>
+</footer>
+</section>
+</main>
+</div>
+<dialog id="image-dialog" aria-labelledby="dialog-title"><div class="dialog-head"><p id="dialog-title">Captura de Rastera</p><button type="button" id="close-dialog">Cerrar · Esc</button></div><img id="dialog-image" alt=""></dialog>
+<script>
+const modal=document.getElementById("image-dialog");
+document.querySelectorAll("[data-enlarge]").forEach(button=>button.addEventListener("click",()=>{
+  const source=button.querySelector("img"),target=document.getElementById("dialog-image");
+  target.src=source.src;target.alt=source.alt;document.getElementById("dialog-title").textContent=source.alt;modal.showModal();
+}));
+document.getElementById("close-dialog").addEventListener("click",()=>modal.close());
+modal.addEventListener("click",event=>{if(event.target===modal){const r=modal.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)modal.close();}});
+document.getElementById("print").addEventListener("click",()=>window.print());
+document.querySelectorAll("[data-download]").forEach(button=>button.addEventListener("click",()=>{
+  const link=document.createElement("a");link.href=document.getElementById(button.dataset.download).src;link.download=button.dataset.name;document.body.appendChild(link);link.click();link.remove();
+}));
+const links=[...document.querySelectorAll("nav a")];
+const observer=new IntersectionObserver(entries=>{entries.forEach(entry=>{if(entry.isIntersecting){links.forEach(link=>{if(link.getAttribute("href")==="#"+entry.target.id)link.setAttribute("aria-current","location");else link.removeAttribute("aria-current");});}});},{rootMargin:"-15% 0px -65% 0px",threshold:0});
+["inicio","preparar","elegir","organizar","exportar","compartir","atajos"].forEach(id=>observer.observe(document.getElementById(id)));
+</script>
+</body>
+</html>

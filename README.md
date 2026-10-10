@@ -37,6 +37,7 @@ El diseño favorece la carga progresiva y la reutilización de recursos. Usar Ru
 ## Documentación
 
 - [Guía de uso](docs/usage.md): selección, organización y exportación.
+- [Tutorial ilustrado](docs/tutorial/index.html): casos de uso paso a paso, capturas reales e imágenes de práctica. Ábrelo en un navegador; [preparación y procedencia](docs/tutorial/README.md).
 - [Arquitectura](docs/architecture.md): módulos, dependencias, concurrencia, catálogo, cachés y operaciones sobre archivos.
 - [Plan de desarrollo](docs/roadmap.md): entregas y criterios de aceptación.
 - [Medir rendimiento](docs/performance.md): contadores, banco reproducible y medición del proceso.
