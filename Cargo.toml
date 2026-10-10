@@ -11,6 +11,11 @@ rust-version = "1.92"
 rastera-core = { path = "crates/rastera-core" }
 rastera-engine = { path = "crates/rastera-engine" }
 rastera-adapters = { path = "crates/rastera-adapters" }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+crossbeam-channel = "0.5.15"
+tempfile = "3.23"
+eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "x11", "wayland"] }
+rfd = "0.17"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

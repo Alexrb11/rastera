@@ -6,6 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 rastera-core.workspace = true
+crossbeam-channel.workspace = true
 
 [lints]
 workspace = true
