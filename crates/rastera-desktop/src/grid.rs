@@ -24,6 +24,8 @@ pub struct ThumbnailGrid {
     clock: u64,
     pub selected: HashSet<PathBuf>,
     pub open_viewer: bool,
+    anchor: Option<PathBuf>,
+    pub density: u8,
 }
 
 impl ThumbnailGrid {
@@ -43,6 +45,8 @@ impl ThumbnailGrid {
             clock: 0,
             selected: HashSet::new(),
             open_viewer: false,
+            anchor: None,
+            density: 1,
         }
     }
 
@@ -52,10 +56,51 @@ impl ThumbnailGrid {
         self.pending = None;
         self.cache.clear();
         self.selected.clear();
+        self.anchor = None;
     }
 
     pub fn busy(&self) -> bool {
         self.pending.is_some()
+    }
+    pub fn clear_selection(&mut self) {
+        self.selected.clear();
+        self.anchor = None;
+    }
+    pub fn select_all(&mut self, entries: &[FolderEntry]) {
+        self.selected = entries.iter().map(|entry| entry.path.clone()).collect();
+        self.anchor = entries.first().map(|entry| entry.path.clone());
+    }
+    fn select(
+        &mut self,
+        path: &std::path::Path,
+        entries: &[FolderEntry],
+        additive: bool,
+        range: bool,
+    ) {
+        if range
+            && let Some(anchor) = &self.anchor
+            && let (Some(from), Some(to)) = (
+                entries.iter().position(|entry| &entry.path == anchor),
+                entries.iter().position(|entry| entry.path == path),
+            )
+        {
+            if !additive {
+                self.selected.clear();
+            }
+            self.selected.extend(
+                entries[from.min(to)..=from.max(to)]
+                    .iter()
+                    .map(|entry| entry.path.clone()),
+            );
+            return;
+        }
+        if !additive {
+            self.selected.clear();
+        }
+        if !self.selected.insert(path.to_path_buf()) {
+            self.selected.remove(path);
+        }
+        self.anchor = Some(path.to_path_buf());
     }
     pub fn diagnostics(
         &self,
@@ -115,32 +160,36 @@ impl ThumbnailGrid {
         ui: &mut egui::Ui,
         entries: &[FolderEntry],
         preview_loading: bool,
+        current: Option<&std::path::Path>,
+        catalog: &crate::catalog::Catalog,
     ) -> Option<PathBuf> {
+        use crate::theme;
         let mut opened = None;
+        let mut clicked = None;
         self.open_viewer = false;
-        ui.horizontal(|ui| {
-            ui.heading("Biblioteca");
-            ui.label(format!(
-                "{} imágenes · {} seleccionadas",
-                entries.len(),
-                self.selected.len()
-            ));
-            if ui.button("Seleccionar todo").clicked() {
-                self.selected = entries.iter().map(|entry| entry.path.clone()).collect();
+        let target_width = match self.density {
+            0 => 112.0,
+            2 => 204.0,
+            _ => 152.0,
+        };
+        let spacing = ui.spacing().item_spacing.x;
+        let columns = ((ui.available_width() + spacing) / (target_width + spacing))
+            .floor()
+            .max(1.0) as usize;
+        let tile_width =
+            ((ui.available_width() - spacing * (columns - 1) as f32) / columns as f32).max(40.0);
+        let row_height = tile_width
+            * if ui.ctx().viewport_rect().height() < 560.0 {
+                0.48
+            } else {
+                0.76
             }
-            if ui.button("Limpiar selección").clicked() {
-                self.selected.clear();
-            }
-        });
-        ui.label("Clic: seleccionar · Ctrl+clic: añadir o quitar · Doble clic: abrir");
-        ui.add_space(8.0);
-        let columns = (ui.available_width() / 170.0).floor().max(1.0) as usize;
-        let tile_width = (ui.available_width() / columns as f32 - 8.0).max(40.0);
-        let row_height = 166.0;
+            + 30.0;
         let mut wanted = None;
         let mut pending_visible = false;
         egui::ScrollArea::vertical()
-            .id_salt("thumbnail-grid")
+            .id_salt(("thumbnail-grid", self.density))
+            .auto_shrink([false, false])
             .show_rows(
                 ui,
                 row_height,
@@ -156,23 +205,43 @@ impl ThumbnailGrid {
                                 let path = &entry.path;
                                 self.clock += 1;
                                 pending_visible |= self.pending.as_ref() == Some(path);
+                                let selected = self.selected.contains(path);
                                 let (rect, response) = ui.allocate_exact_size(
-                                    egui::vec2(tile_width, row_height - 8.0),
+                                    egui::vec2(tile_width, row_height - spacing),
                                     Sense::click(),
                                 );
-                                ui.painter().rect_filled(
+                                let color = if selected {
+                                    theme::SELECTED
+                                } else if response.hovered() {
+                                    Color32::from_rgb(45, 47, 50)
+                                } else {
+                                    theme::BACKGROUND
+                                };
+                                ui.painter().rect_filled(rect, 2.0, color);
+                                ui.painter().rect_stroke(
                                     rect,
-                                    6.0,
-                                    if self.selected.contains(path) {
-                                        Color32::from_rgb(42, 77, 64)
-                                    } else {
-                                        Color32::from_rgb(26, 33, 42)
-                                    },
+                                    2.0,
+                                    egui::Stroke::new(
+                                        if selected || current == Some(path.as_path()) {
+                                            1.0
+                                        } else {
+                                            0.0
+                                        },
+                                        if selected {
+                                            theme::ACCENT
+                                        } else if current == Some(path.as_path()) {
+                                            theme::MUTED
+                                        } else {
+                                            theme::BORDER
+                                        },
+                                    ),
+                                    egui::StrokeKind::Inside,
                                 );
                                 let area = Rect::from_min_max(
-                                    rect.min + egui::vec2(8.0, 8.0),
-                                    rect.max - egui::vec2(8.0, 30.0),
+                                    rect.min + egui::vec2(5.0, 5.0),
+                                    rect.max - egui::vec2(5.0, 26.0),
                                 );
+                                ui.painter().rect_filled(area, 0.0, theme::BACKGROUND);
                                 if let Some(thumbnail) = self.cache.get_mut(path) {
                                     thumbnail.touched = self.clock;
                                     if let Some(texture) = &thumbnail.texture {
@@ -195,7 +264,7 @@ impl ThumbnailGrid {
                                             area.center(),
                                             egui::Align2::CENTER_CENTER,
                                             "No disponible",
-                                            egui::FontId::proportional(13.0),
+                                            egui::FontId::proportional(12.0),
                                             Color32::LIGHT_RED,
                                         );
                                         response.clone().on_hover_text(
@@ -207,46 +276,115 @@ impl ThumbnailGrid {
                                     ui.painter().text(
                                         area.center(),
                                         egui::Align2::CENTER_CENTER,
-                                        "…",
-                                        egui::FontId::proportional(20.0),
-                                        Color32::GRAY,
+                                        "Cargando…",
+                                        egui::FontId::proportional(12.0),
+                                        theme::MUTED,
                                     );
                                 }
                                 let name = path.file_name().unwrap_or_default().to_string_lossy();
-                                let galley = ui.painter().layout(
-                                    name.into_owned(),
-                                    egui::FontId::proportional(13.0),
-                                    Color32::WHITE,
-                                    tile_width - 16.0,
+                                let mut job = egui::text::LayoutJob::simple(
+                                    name.to_string(),
+                                    egui::FontId::proportional(12.0),
+                                    theme::TEXT,
+                                    tile_width - 10.0,
                                 );
-                                ui.painter()
-                                    .with_clip_rect(Rect::from_min_max(
-                                        egui::pos2(rect.min.x + 8.0, rect.max.y - 25.0),
-                                        rect.max - egui::vec2(8.0, 2.0),
-                                    ))
-                                    .galley(
-                                        egui::pos2(rect.min.x + 8.0, rect.max.y - 25.0),
-                                        galley,
-                                        Color32::WHITE,
+                                job.wrap.max_rows = 1;
+                                job.wrap.break_anywhere = true;
+                                let galley = ui.painter().layout_job(job);
+                                ui.painter().galley(
+                                    egui::pos2(rect.min.x + 5.0, rect.max.y - 21.0),
+                                    galley,
+                                    theme::TEXT,
+                                );
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::WidgetType::Button,
+                                        ui.is_enabled(),
+                                        selected,
+                                        &name,
+                                    )
+                                });
+                                if selected || response.hovered() {
+                                    let center = area.left_top() + egui::vec2(12.0, 12.0);
+                                    ui.painter().rect_filled(
+                                        Rect::from_center_size(center, egui::vec2(14.0, 14.0)),
+                                        1.0,
+                                        if selected {
+                                            theme::ACCENT
+                                        } else {
+                                            theme::SURFACE
+                                        },
                                     );
+                                    ui.painter().rect_stroke(
+                                        Rect::from_center_size(center, egui::vec2(14.0, 14.0)),
+                                        1.0,
+                                        egui::Stroke::new(1.0, theme::ACCENT),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    if selected {
+                                        ui.painter().line_segment(
+                                            [
+                                                center + egui::vec2(-4.0, 0.0),
+                                                center + egui::vec2(-1.0, 3.0),
+                                            ],
+                                            egui::Stroke::new(1.8, theme::BACKGROUND),
+                                        );
+                                        ui.painter().line_segment(
+                                            [
+                                                center + egui::vec2(-1.0, 3.0),
+                                                center + egui::vec2(4.0, -3.0),
+                                            ],
+                                            egui::Stroke::new(1.8, theme::BACKGROUND),
+                                        );
+                                    }
+                                }
+                                if catalog.annotation(path).is_some_and(|a| a.favorite) {
+                                    let badge = Rect::from_min_size(
+                                        area.right_top() - egui::vec2(68.0, -4.0),
+                                        egui::vec2(64.0, 20.0),
+                                    );
+                                    ui.painter().rect_filled(badge, 4.0, theme::SURFACE);
+                                    ui.painter().text(
+                                        badge.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        "Favorita",
+                                        egui::FontId::proportional(11.0),
+                                        theme::ACCENT,
+                                    );
+                                }
+                                response.clone().on_hover_text(format!(
+                                    "{name}\n{}\nCtrl+clic: añadir · Shift+clic: rango",
+                                    path.display()
+                                ));
                                 if response.clicked() {
+                                    let modifiers = ui.input(|input| input.modifiers);
+                                    clicked =
+                                        Some((path.clone(), modifiers.command, modifiers.shift));
                                     opened = Some(path.clone());
-                                    if !ui.input(|input| input.modifiers.command) {
-                                        self.selected.clear();
-                                    }
-                                    if !self.selected.insert(path.clone()) {
-                                        self.selected.remove(path);
-                                    }
                                 }
                                 if response.double_clicked() {
                                     self.open_viewer = true;
                                     opened = Some(path.clone());
                                 }
+                                response.context_menu(|ui| {
+                                    if ui.button("Abrir en visor").clicked() {
+                                        self.open_viewer = true;
+                                        opened = Some(path.clone());
+                                        ui.close();
+                                    }
+                                    if ui.button("Copiar ruta").clicked() {
+                                        ui.ctx().copy_text(path.to_string_lossy().into_owned());
+                                        ui.close();
+                                    }
+                                });
                             }
                         });
                     }
                 },
             );
+        if let Some((path, additive, range)) = clicked {
+            self.select(&path, entries, additive, range);
+        }
         // Only one thumbnail in flight; scrolling cancels off-screen work.
         if self.pending.is_some() && (!pending_visible || preview_loading) {
             self.generation += 1;
@@ -262,5 +400,40 @@ impl ThumbnailGrid {
             self.pending = Some(path);
         }
         opened
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ranges_follow_visible_order_and_hidden_anchors_fall_back_to_click() {
+        let entries: Vec<_> = ["a.png", "b.png", "c.png", "d.png"]
+            .into_iter()
+            .map(|name| FolderEntry {
+                path: PathBuf::from(name),
+            })
+            .collect();
+        let mut grid = ThumbnailGrid::new(
+            &egui::Context::default(),
+            MemoryBudget::new(rastera_core::CPU_IMAGE_BUDGET),
+        );
+        grid.select(&entries[1].path, &entries, false, false);
+        grid.select(&entries[3].path, &entries, false, true);
+        assert_eq!(
+            grid.selected,
+            entries[1..].iter().map(|e| e.path.clone()).collect()
+        );
+        grid.select(&entries[0].path, &entries, true, true);
+        assert_eq!(grid.selected.len(), 4);
+        grid.select(&entries[2].path, &entries[2..], false, true);
+        assert_eq!(grid.selected, [entries[2].path.clone()].into());
+        grid.select(&entries[2].path, &entries, true, false);
+        assert!(grid.selected.is_empty());
+        grid.select_all(&entries[2..]);
+        assert_eq!(grid.selected.len(), 2);
+        grid.clear_selection();
+        assert!(grid.selected.is_empty());
+        assert!(grid.anchor.is_none());
     }
 }

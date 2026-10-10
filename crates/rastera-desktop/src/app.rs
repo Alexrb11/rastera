@@ -6,8 +6,7 @@ use rastera_adapters::{LocalFolders, LocalImages};
 use rastera_core::{CPU_IMAGE_BUDGET, ErrorKind, FolderEntry, ImageInfo};
 use rastera_engine::{FolderScanner, FolderUpdate, ImageLoader, memory::MemoryBudget};
 
-const ACCENT: Color32 = Color32::from_rgb(138, 211, 174);
-const MUTED: Color32 = Color32::from_rgb(150, 165, 180);
+use crate::theme::{self, ACCENT, MUTED};
 
 struct Preview {
     texture: TextureHandle,
@@ -17,6 +16,10 @@ struct Preview {
 }
 
 pub struct RasteraApp {
+    inspector_open: bool,
+    details_popup: bool,
+    route_open: bool,
+    shortcuts_open: bool,
     diagnostics_open: bool,
     detail: crate::detail::DetailView,
     batch: crate::batch::Batch,
@@ -48,7 +51,7 @@ pub struct RasteraApp {
 
 impl RasteraApp {
     pub fn new(cc: &eframe::CreationContext<'_>, initial: Option<PathBuf>) -> Self {
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        theme::configure(&cc.egui_ctx);
         let ctx = cc.egui_ctx.clone();
         let budget = MemoryBudget::new(CPU_IMAGE_BUDGET);
         let grid = crate::grid::ThumbnailGrid::new(&cc.egui_ctx, budget.clone());
@@ -63,6 +66,10 @@ impl RasteraApp {
             Arc::new(move || ctx.request_repaint()),
         );
         let mut app = Self {
+            inspector_open: true,
+            details_popup: false,
+            route_open: false,
+            shortcuts_open: false,
             diagnostics_open: false,
             detail: crate::detail::DetailView::new(&cc.egui_ctx, budget.clone()),
             batch: crate::batch::Batch::new(&cc.egui_ctx, budget.clone()),
@@ -217,6 +224,15 @@ impl RasteraApp {
                 }
                 FolderUpdate::Finished(result) => {
                     #[cfg(feature = "capture")]
+                    if std::env::var_os("RASTERA_CAPTURE_SELECTION").is_some() {
+                        self.grid
+                            .select_all(&self.entries[..self.entries.len().min(3)]);
+                    }
+                    #[cfg(feature = "capture")]
+                    if let Ok(search) = std::env::var("RASTERA_CAPTURE_FILTER") {
+                        self.catalog.capture_search(search);
+                    }
+                    #[cfg(feature = "capture")]
                     if std::env::var_os("RASTERA_CAPTURE_PANEL").as_deref()
                         == Some(std::ffi::OsStr::new("batch"))
                         && let Some(destination) = std::env::var_os("RASTERA_CAPTURE_DEST")
@@ -303,14 +319,41 @@ impl RasteraApp {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
+        if ctx.input_mut(|input| {
+            input.consume_key(
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                egui::Key::O,
+            )
+        }) {
+            self.pick_path(ctx, true);
+        }
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::O)) {
             self.pick_file(ctx);
         }
         if !ctx.egui_wants_keyboard_input() {
-            if ctx.input(|input| input.key_pressed(egui::Key::ArrowRight)) {
+            if self.grid_view
+                && ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::A))
+            {
+                self.grid.select_all(&self.catalog.filtered);
+            }
+            if ctx.input(|input| input.key_pressed(egui::Key::Escape))
+                && !self.batch.open
+                && !self.catalog.editor_open
+                && !self.route_open
+                && !self.details_popup
+                && !self.shortcuts_open
+                && !self.diagnostics_open
+            {
+                if self.grid_view {
+                    self.grid.clear_selection();
+                } else if self.folder.is_some() {
+                    self.grid_view = true;
+                }
+            }
+            if !self.grid_view && ctx.input(|input| input.key_pressed(egui::Key::ArrowRight)) {
                 self.step(1);
             }
-            if ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft)) {
+            if !self.grid_view && ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft)) {
                 self.step(-1);
             }
             if ctx.input(|input| input.key_pressed(egui::Key::Home)) {
@@ -402,224 +445,528 @@ impl RasteraApp {
         }
     }
 
+    fn export_selection(&mut self) {
+        let paths = if self.grid.selected.is_empty() {
+            self.path.iter().cloned().collect()
+        } else {
+            self.grid.selected.iter().cloned().collect()
+        };
+        self.batch.select(paths);
+    }
+
+    fn auxiliary_windows(&mut self, ctx: &egui::Context) {
+        let mut open = self.route_open;
+        let mut accepted = false;
+        egui::Window::new("Abrir una ruta")
+            .open(&mut open)
+            .collapsible(false)
+            .default_width(500.0)
+            .show(ctx, |ui| {
+                ui.label("Pega la ruta de una imagen o carpeta.");
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.path_input).desired_width(f32::INFINITY),
+                );
+                accepted = ui
+                    .add_enabled(!self.path_input.trim().is_empty(), theme::primary("Abrir"))
+                    .clicked()
+                    || (response.lost_focus()
+                        && ui.input(|input| input.key_pressed(egui::Key::Enter))
+                        && !self.path_input.trim().is_empty());
+            });
+        if accepted {
+            self.open(PathBuf::from(self.path_input.trim()));
+            open = false;
+        }
+        self.route_open = open;
+        egui::Window::new("Atajos de teclado")
+            .open(&mut self.shortcuts_open)
+            .collapsible(false)
+            .default_width(420.0)
+            .show(ctx, |ui| {
+                egui::Grid::new("shortcuts")
+                    .spacing([24.0, 10.0])
+                    .show(ui, |ui| {
+                        for (key, action) in [
+                            ("Ctrl+O", "Abrir imagen"),
+                            ("Ctrl+Shift+O", "Abrir carpeta"),
+                            ("Ctrl+A", "Seleccionar los resultados del filtro"),
+                            ("Ctrl+clic", "Añadir o quitar de la selección"),
+                            ("Shift+clic", "Seleccionar un rango"),
+                            ("Esc", "Deseleccionar / volver a Biblioteca"),
+                            ("← / →", "Imagen anterior / siguiente en el visor"),
+                            ("Home", "Ajustar a ventana"),
+                            ("+ / −", "Ampliar / reducir"),
+                        ] {
+                            ui.label(RichText::new(key).color(ACCENT));
+                            ui.label(action);
+                            ui.end_row();
+                        }
+                    });
+            });
+        let mut details = self.details_popup;
+        egui::Window::new("Propiedades de imagen")
+            .open(&mut details)
+            .collapsible(false)
+            .default_width(280.0)
+            .vscroll(true)
+            .show(ctx, |ui| self.inspector(ui));
+        self.details_popup = details;
+    }
+
+    fn welcome(&mut self, ui: &mut egui::Ui) {
+        ui.vertical_centered(|ui| {
+            ui.add_space((ui.available_height() * 0.3).max(20.0));
+            ui.heading("Abrir imágenes");
+            ui.label(
+                RichText::new("Abre una carpeta o arrastra imágenes a esta ventana.").color(MUTED),
+            );
+            ui.add_space(8.0);
+            if ui.button("Abrir carpeta…").clicked() {
+                self.pick_path(ui.ctx(), true);
+            }
+            if ui.button("Abrir imagen…").clicked() {
+                self.pick_file(ui.ctx());
+            }
+            ui.add_space(8.0);
+            ui.label(RichText::new("JPEG · PNG · WebP").small().color(MUTED));
+        });
+    }
     fn header(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if ui.button("Rendimiento").clicked() {
-                self.diagnostics_open = true;
-            }
-            ui.add_space(12.0);
-            ui.label(RichText::new("RASTERA").size(24.0).strong().color(ACCENT));
-            ui.add_space(16.0);
-            if ui.available_width() > 900.0 {
-                ui.label(RichText::new("Tus imágenes, a tu ritmo").color(MUTED));
-            }
+            ui.label(RichText::new("Rastera").strong());
+            ui.separator();
+            ui.menu_button("Archivo", |ui| {
+                if ui.button("Abrir carpeta…      Ctrl+Shift+O").clicked() {
+                    self.pick_path(ui.ctx(), true);
+                    ui.close();
+                }
+                if ui.button("Abrir imagen…       Ctrl+O").clicked() {
+                    self.pick_file(ui.ctx());
+                    ui.close();
+                }
+                if ui.button("Abrir una ruta…").clicked() {
+                    self.route_open = true;
+                    ui.close();
+                }
+            });
+            ui.menu_button("Ver", |ui| {
+                if self.folder.is_some() {
+                    if ui.selectable_label(self.grid_view, "Biblioteca").clicked() {
+                        self.grid_view = true;
+                        ui.close();
+                    }
+                    if ui.selectable_label(!self.grid_view, "Visor").clicked() {
+                        self.grid_view = false;
+                        ui.close();
+                    }
+                    ui.separator();
+                }
+                if ui.ctx().viewport_rect().width() >= 980.0 {
+                    ui.checkbox(&mut self.inspector_open, "Panel de propiedades");
+                } else if ui.button("Propiedades de imagen…").clicked() {
+                    self.details_popup = true;
+                    ui.close();
+                }
+                if ui.button("Atajos de teclado…").clicked() {
+                    self.shortcuts_open = true;
+                    ui.close();
+                }
+            });
+            ui.menu_button("Herramientas", |ui| {
+                if ui
+                    .add_enabled(
+                        !self.grid.selected.is_empty() || self.path.is_some() || self.batch.busy,
+                        egui::Button::new("Exportar imágenes…"),
+                    )
+                    .clicked()
+                {
+                    self.export_selection();
+                    ui.close();
+                }
+                if ui.button("Recuperar / ver lote…").clicked() {
+                    self.batch.open = true;
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button("Diagnóstico de rendimiento…").clicked() {
+                    self.diagnostics_open = true;
+                    ui.close();
+                }
+            });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.add_space(12.0);
-                if ui.button("Abrir imagen · Ctrl+O").clicked() {
+                if ui
+                    .add_enabled(self.dialog.is_none(), egui::Button::new("Abrir imagen…"))
+                    .on_hover_text("Ctrl+O")
+                    .clicked()
+                {
                     self.pick_file(ui.ctx());
                 }
-                if ui.button("Abrir carpeta").clicked() {
+                if ui
+                    .add_enabled(self.dialog.is_none(), egui::Button::new("Abrir carpeta…"))
+                    .on_hover_text("Ctrl+Shift+O")
+                    .clicked()
+                {
                     self.pick_path(ui.ctx(), true);
                 }
+            });
+        });
+        ui.separator();
+        if self.path.is_some() || self.folder.is_some() {
+            ui.horizontal(|ui| {
                 if self.folder.is_some() {
-                    ui.selectable_value(&mut self.grid_view, true, "Cuadrícula");
+                    ui.selectable_value(&mut self.grid_view, true, "Biblioteca");
                     ui.selectable_value(&mut self.grid_view, false, "Visor");
-                    if ui.button("Actualizar").clicked()
+                    if ui
+                        .button("Actualizar")
+                        .on_hover_text("Vuelve a leer la carpeta y limpia la selección")
+                        .clicked()
                         && let Some(folder) = self.folder.clone()
                     {
                         self.open(folder);
                     }
+                    ui.separator();
+                }
+                let path = self
+                    .folder
+                    .as_ref()
+                    .or(self.path.as_ref())
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let width = (ui.available_width() - 93.0).max(60.0);
+                if ui
+                    .add_sized([width, 26.0], egui::Button::new(&path).truncate())
+                    .on_hover_text("Abrir otra ruta")
+                    .clicked()
+                {
+                    self.route_open = true;
+                }
+                let compact = ui.ctx().viewport_rect().width() < 980.0;
+                if ui
+                    .selectable_label(self.inspector_open && !compact, "Propiedades")
+                    .clicked()
+                {
+                    if compact {
+                        self.details_popup = true;
+                    } else {
+                        self.inspector_open = !self.inspector_open;
+                    }
+                }
+            });
+            ui.add_space(4.0);
+        }
+    }
+    fn library(&mut self, ui: &mut egui::Ui) {
+        self.catalog.filters(ui, &self.entries);
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            if ui.add_enabled(!self.catalog.filtered.is_empty(), egui::Button::new("Seleccionar todo")).on_hover_text("Ctrl+A · Selecciona los resultados del filtro").clicked() {
+                self.grid.select_all(&self.catalog.filtered);
+            }
+            if ui.add_enabled(!self.grid.selected.is_empty(), egui::Button::new("Deseleccionar"))
+                .on_hover_text("Esc · Limpia también las seleccionadas fuera del filtro").clicked() {
+                self.grid.clear_selection();
+            }
+            ui.label(RichText::new(format!("{} seleccionadas", self.grid.selected.len())).color(ACCENT));
+            let hidden = self.grid.selected.len() - self.catalog.filtered.iter()
+                .filter(|entry| self.grid.selected.contains(&entry.path)).count();
+            if hidden > 0 {
+                ui.label(RichText::new(format!("{hidden} fuera del filtro")).small().color(MUTED))
+                    .on_hover_text("La exportación incluye estas imágenes. Deseleccionar limpia toda la selección.");
+            }
+            if ui.add_enabled(!self.grid.selected.is_empty() || self.batch.busy,
+                theme::primary(if self.batch.busy { "Ver lote".to_owned() } else {
+                    format!("Exportar selección ({})", self.grid.selected.len())
+                })).clicked() {
+                if self.batch.busy { self.batch.open = true; }
+                else { self.export_selection(); }
+            }
+            egui::ComboBox::from_id_salt("tile-density").selected_text(match self.grid.density {
+                0 => "Miniaturas pequeñas", 2 => "Miniaturas grandes", _ => "Miniaturas medianas",
+            }).show_ui(ui, |ui| {
+                for (value, label) in [(0, "Compacta"), (1, "Mediana"), (2, "Amplia")] {
+                    ui.selectable_value(&mut self.grid.density, value, label);
                 }
             });
         });
-        ui.add_space(6.0);
-        ui.separator();
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(
-                    self.catalog.ready && self.path.is_some(),
-                    egui::Button::new("Organizar imagen"),
+        ui.add_space(8.0);
+        if self.entries.is_empty() {
+            ui.add_space(36.0);
+            ui.heading(if self.folder_loading {
+                "Leyendo la carpeta…"
+            } else {
+                "Esta carpeta está vacía"
+            });
+            ui.label(
+                RichText::new("Aquí aparecerán las imágenes JPEG, PNG y WebP de esta carpeta.")
+                    .color(MUTED),
+            );
+        } else if self.catalog.filtered.is_empty() {
+            ui.add_space(36.0);
+            ui.heading("No hay imágenes que coincidan");
+            ui.label(RichText::new("Prueba otro nombre, etiqueta o formato.").color(MUTED));
+            if ui.button("Restablecer filtros").clicked() {
+                self.catalog.clear_filters();
+            }
+        } else if let Some(path) = self.grid.show(
+            ui,
+            &self.catalog.filtered,
+            self.loading,
+            self.path.as_deref(),
+            &self.catalog,
+        ) {
+            if self.path.as_ref() != Some(&path) {
+                self.open_image(path);
+            }
+            if self.grid.open_viewer {
+                self.grid_view = false;
+            }
+        }
+    }
+
+    fn inspector(&mut self, ui: &mut egui::Ui) {
+        theme::eyebrow(ui, "PROPIEDADES");
+        ui.add_space(12.0);
+        if let Some(preview) = &self.preview {
+            let width = ui.available_width();
+            let size = preview.size * (width / preview.size.x).min(110.0 / preview.size.y);
+            ui.add(egui::Image::new((preview.texture.id(), size)).corner_radius(0.0));
+            ui.add_space(12.0);
+        }
+        if let Some(path) = &self.path {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(path.file_name().unwrap_or_default().to_string_lossy()).strong(),
                 )
+                .wrap(),
+            );
+            ui.add_space(8.0);
+            if let Some(preview) = &self.preview {
+                egui::Grid::new("image-properties")
+                    .spacing([16.0, 8.0])
+                    .show(ui, |ui| {
+                        for (label, value) in [
+                            (
+                                "Dimensiones",
+                                format!("{} × {} px", preview.info.width, preview.info.height),
+                            ),
+                            ("Formato", preview.info.kind.to_string()),
+                            ("Tamaño", file_size(preview.info.stamp.length)),
+                        ] {
+                            ui.label(RichText::new(label).small().color(MUTED));
+                            ui.label(value);
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(12.0);
+                if self.detail.ready() {
+                    ui.label(RichText::new("Resolución completa").small().color(ACCENT));
+                } else if self.loading {
+                    ui.label(RichText::new("Cargando vista previa…").small().color(MUTED));
+                }
+                if preview.info.has_color_profile {
+                    ui.label(RichText::new("ICC convertido a sRGB").small().color(MUTED));
+                }
+            }
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(8.0);
+            theme::eyebrow(ui, "ORGANIZACIÓN");
+            if let Some(annotation) = self.catalog.annotation(path) {
+                ui.label(if annotation.favorite {
+                    "Favorita"
+                } else {
+                    "Sin favorito"
+                });
+                if annotation.tags.is_empty() {
+                    ui.label(
+                        RichText::new("Añade etiquetas para encontrarla después.")
+                            .small()
+                            .color(MUTED),
+                    );
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        for tag in &annotation.tags {
+                            egui::Frame::NONE
+                                .fill(theme::SELECTED)
+                                .corner_radius(4)
+                                .inner_margin(4)
+                                .show(ui, |ui| {
+                                    ui.label(RichText::new(tag).small().color(ACCENT));
+                                });
+                        }
+                    });
+                }
+            }
+            if ui
+                .add_enabled(self.catalog.ready, egui::Button::new("Editar organización"))
                 .clicked()
             {
                 self.catalog.editor_open = true;
             }
-            ui.add_space(12.0);
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut self.path_input)
-                    .hint_text("Ruta de una imagen o carpeta…")
-                    .desired_width((ui.available_width() - 90.0).max(80.0)),
-            );
-            let enter =
-                response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-            if (ui.button("Abrir").clicked() || enter) && !self.path_input.trim().is_empty() {
-                self.open(PathBuf::from(self.path_input.trim()));
-            }
-        });
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            if ui
-                .button(if self.batch.busy {
-                    "Ver lote en curso"
-                } else {
-                    "Herramientas por lotes"
-                })
-                .clicked()
-            {
-                let paths = if self.grid.selected.is_empty() {
-                    self.path.iter().cloned().collect()
-                } else {
-                    self.grid.selected.iter().cloned().collect()
-                };
-                self.batch.select(paths);
-            }
-            ui.label(format!(
-                "Buffers reservados: {:.1} MiB",
-                self.budget.used() as f64 / 1_048_576.0
-            ));
-            if !self.grid.selected.is_empty() {
-                ui.label(format!(
-                    "{} seleccionadas para exportar",
-                    self.grid.selected.len()
-                ));
-            }
-        });
-    }
-
-    fn inspector(&mut self, ui: &mut egui::Ui) {
-        ui.set_min_width(205.0);
-        ui.heading("Imagen");
-        ui.add_space(12.0);
-        if let Some(path) = &self.path {
-            ui.label(
-                RichText::new(path.file_name().unwrap_or_default().to_string_lossy()).strong(),
-            );
-            ui.add_space(8.0);
         } else {
-            ui.label(RichText::new("Abre una imagen para ver sus detalles.").color(MUTED));
-        }
-        if let Some(preview) = &self.preview {
-            ui.label(format!(
-                "{} × {} px",
-                preview.info.width, preview.info.height
-            ));
-            ui.label(format!(
-                "{} · {:.1} MiB",
-                preview.info.kind,
-                preview.info.stamp.length as f64 / 1_048_576.0
-            ));
-            if preview.info.has_color_profile {
-                ui.add_space(8.0);
-                ui.label(RichText::new("Perfil ICC convertido a sRGB.").color(MUTED));
-            }
-            if let Some(error) = &self.detail.error {
-                ui.label(RichText::new(error).color(Color32::LIGHT_RED));
-            } else if self.detail.ready() {
-                ui.label(RichText::new("Detalle completo cargado").color(ACCENT));
-            }
-            if preview.size.x as u32 != preview.info.width
-                || preview.size.y as u32 != preview.info.height
-            {
-                ui.add_space(8.0);
-                ui.label(RichText::new("Vista inicial reducida u orientada. Al ampliar se carga el detalle completo.").color(MUTED));
-            }
-        }
-        if let Some(folder) = &self.folder {
-            ui.add_space(16.0);
-            ui.separator();
-            ui.label(RichText::new("CARPETA").small().color(MUTED));
             ui.label(
-                folder
-                    .file_name()
-                    .unwrap_or(folder.as_os_str())
-                    .to_string_lossy(),
+                RichText::new("Selecciona una imagen para ver sus detalles y organizarla.")
+                    .color(MUTED),
             );
-            ui.label(format!(
-                "{} imágenes{}",
-                self.entries.len(),
-                if self.folder_loading {
-                    " · leyendo…"
-                } else {
-                    ""
-                }
-            ));
-            let mut chosen = None;
-            let row_height = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
-            egui::ScrollArea::vertical()
-                .id_salt("folder-list")
-                .max_height(180.0)
-                .show_rows(ui, row_height, self.entries.len(), |ui, rows| {
-                    for index in rows {
-                        let entry = &self.entries[index];
-                        let selected = self.path.as_ref() == Some(&entry.path);
-                        if ui
-                            .add(
-                                egui::Button::selectable(
-                                    selected,
-                                    entry.path.file_name().unwrap_or_default().to_string_lossy(),
-                                )
-                                .truncate(),
-                            )
-                            .on_hover_text(entry.path.to_string_lossy())
-                            .clicked()
-                        {
-                            chosen = Some(entry.path.clone());
-                        }
-                    }
-                });
-            if let Some(path) = chosen {
-                self.open_image(path);
-            }
         }
-        ui.add_space(20.0);
-        ui.separator();
-        ui.add_space(12.0);
-        ui.label(RichText::new("CONTROLES").small().color(MUTED));
-        ui.label("Rueda: ampliar o reducir");
-        ui.label("Arrastrar: desplazar");
-        ui.label("Home: ajustar a ventana");
-        ui.label("+ / −: cambiar zoom");
-        ui.label("Flechas: anterior o siguiente");
-        ui.add_space(14.0);
-        ui.label(RichText::new("Los originales permanecen intactos.").color(MUTED));
+        if let Some(error) = &self.detail.error {
+            ui.add_space(8.0);
+            ui.colored_label(Color32::LIGHT_RED, error);
+        }
+        ui.add_space(8.0);
+        egui::CollapsingHeader::new("Ubicación").show(ui, |ui| {
+            if let Some(path) = &self.path {
+                ui.add(egui::Label::new(RichText::new(path.to_string_lossy()).small()).wrap());
+                if ui.button("Copiar ruta").clicked() {
+                    ui.ctx().copy_text(path.to_string_lossy().into_owned());
+                }
+            }
+        });
+        if !self.grid_view && !self.entries.is_empty() {
+            egui::CollapsingHeader::new(format!("En esta carpeta · {}", self.entries.len())).show(
+                ui,
+                |ui| {
+                    let mut chosen = None;
+                    let row_height = ui.spacing().interact_size.y;
+                    egui::ScrollArea::vertical()
+                        .id_salt("folder-list")
+                        .max_height(200.0)
+                        .show_rows(ui, row_height, self.entries.len(), |ui, rows| {
+                            for index in rows {
+                                let entry = &self.entries[index];
+                                if ui
+                                    .add(
+                                        egui::Button::selectable(
+                                            self.path.as_ref() == Some(&entry.path),
+                                            entry
+                                                .path
+                                                .file_name()
+                                                .unwrap_or_default()
+                                                .to_string_lossy(),
+                                        )
+                                        .truncate(),
+                                    )
+                                    .on_hover_text(entry.path.to_string_lossy())
+                                    .clicked()
+                                {
+                                    chosen = Some(entry.path.clone());
+                                }
+                            }
+                        });
+                    if let Some(path) = chosen {
+                        self.open_image(path);
+                    }
+                },
+            );
+        }
     }
 
     fn viewer(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            if !self.entries.is_empty() {
-                if ui.button("Anterior").clicked() {
+        if self.path.is_none() && self.folder.is_none() && !self.folder_loading {
+            self.welcome(ui);
+            return;
+        }
+        let position = self
+            .entries
+            .iter()
+            .position(|entry| Some(&entry.path) == self.path.as_ref());
+        ui.horizontal_wrapped(|ui| {
+            if self.folder.is_some() {
+                if ui
+                    .add_enabled(
+                        position.is_some_and(|index| index > 0),
+                        egui::Button::new("←"),
+                    )
+                    .on_hover_text("Imagen anterior · Flecha izquierda")
+                    .clicked()
+                {
                     self.step(-1);
                 }
-                if ui.button("Siguiente").clicked() {
+                if ui
+                    .add_enabled(
+                        position.is_some_and(|index| index + 1 < self.entries.len()),
+                        egui::Button::new("→"),
+                    )
+                    .on_hover_text("Imagen siguiente · Flecha derecha")
+                    .clicked()
+                {
                     self.step(1);
+                }
+                if let Some(position) = position {
+                    ui.label(
+                        RichText::new(format!("{} / {}", position + 1, self.entries.len()))
+                            .small()
+                            .color(MUTED),
+                    );
                 }
                 ui.separator();
             }
-            if ui.button("Ajustar").clicked() {
-                self.zoom = None;
-                self.pan = Vec2::ZERO;
+            ui.add_enabled_ui(self.preview.is_some(), |ui| {
+                if ui
+                    .selectable_label(self.zoom.is_none(), "Ajustar")
+                    .on_hover_text("Home · Ajustar a la ventana")
+                    .clicked()
+                {
+                    self.zoom = None;
+                    self.pan = Vec2::ZERO;
+                }
+                if ui
+                    .selectable_label(self.zoom == Some(1.0), "100%")
+                    .on_hover_text("Un píxel de imagen por píxel de pantalla")
+                    .clicked()
+                {
+                    self.zoom = Some(1.0);
+                    self.pan = Vec2::ZERO;
+                }
+                if ui.button("−").on_hover_text("Reducir zoom").clicked() {
+                    self.zoom =
+                        Some((self.zoom.unwrap_or(self.current_scale) / 1.25).clamp(0.001, 16.0));
+                }
+                ui.label(
+                    RichText::new(format!(
+                        "{:.0}%",
+                        self.zoom.unwrap_or(self.current_scale) * 100.0
+                    ))
+                    .color(MUTED),
+                );
+                if ui.button("+").on_hover_text("Ampliar zoom").clicked() {
+                    self.zoom =
+                        Some((self.zoom.unwrap_or(self.current_scale) * 1.25).clamp(0.001, 16.0));
+                }
+            });
+            if ui
+                .add_enabled(
+                    self.path.is_some() || self.batch.busy,
+                    theme::primary(if self.batch.busy {
+                        "Ver lote"
+                    } else {
+                        "Exportar imagen"
+                    }),
+                )
+                .clicked()
+            {
+                if self.batch.busy {
+                    self.batch.open = true;
+                } else {
+                    self.batch.select(self.path.iter().cloned().collect());
+                }
             }
-            if ui.button("100%").clicked() {
-                self.zoom = Some(1.0);
-                self.pan = Vec2::ZERO;
-            }
-            if ui.button("−").clicked() {
-                self.zoom =
-                    Some((self.zoom.unwrap_or(self.current_scale) / 1.25).clamp(0.05, 16.0));
-            }
-            if ui.button("+").clicked() {
-                self.zoom =
-                    Some((self.zoom.unwrap_or(self.current_scale) * 1.25).clamp(0.05, 16.0));
-            }
-            ui.label(self.zoom.map_or_else(
-                || "Ajuste a ventana".to_owned(),
-                |zoom| format!("{:.0}%", zoom * 100.0),
-            ));
         });
+        if let Some(path) = &self.path {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(path.file_name().unwrap_or_default().to_string_lossy())
+                        .small()
+                        .color(MUTED),
+                )
+                .truncate(),
+            )
+            .on_hover_text(path.to_string_lossy());
+        }
         ui.add_space(8.0);
         let (canvas, response) = ui.allocate_exact_size(ui.available_size(), Sense::drag());
         let painter = ui.painter().with_clip_rect(canvas);
-        painter.rect_filled(canvas, 8.0, Color32::from_rgb(16, 22, 29));
+        painter.rect_filled(canvas, 0.0, Color32::from_rgb(22, 23, 25));
         if let Some(preview) = &self.preview {
             let pixels_per_point = ui.ctx().pixels_per_point();
             let fit = (((canvas.width() - 32.0) / preview.source_size.x)
@@ -743,50 +1090,119 @@ impl RasteraApp {
 fn anchored_pan(center: egui::Pos2, pan: Vec2, pointer: egui::Pos2, ratio: f32) -> Vec2 {
     pointer - center - (pointer - (center + pan)) * ratio
 }
+fn file_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1_048_576 {
+        format!("{:.1} KiB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.2} MiB", bytes as f64 / 1_048_576.0)
+    }
+}
 impl eframe::App for RasteraApp {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        ui.set_style(ctx.global_style());
+        ui.painter()
+            .rect_filled(ui.max_rect(), 0.0, theme::BACKGROUND);
         self.receive(&ctx);
         self.shortcuts(&ctx);
-        self.header(ui);
-        if let Some(error) = &self.error {
-            ui.label(RichText::new(error).color(Color32::from_rgb(255, 155, 140)));
-        }
-        if let Some(error) = &self.folder_error {
-            ui.label(RichText::new(error).color(Color32::from_rgb(255, 155, 140)));
-        }
-        let height = (ui.available_height() - 30.0).max(100.0);
-        ui.horizontal_top(|ui| {
-            egui::Frame::NONE
-                .fill(Color32::from_rgb(26, 33, 42))
-                .inner_margin(16)
-                .show(ui, |ui| {
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(205.0, height - 32.0),
-                        Layout::top_down(Align::Min),
-                        |ui| {
-                            ui.set_min_height(height - 32.0);
-                            self.inspector(ui);
-                        },
+        egui::Frame::NONE.inner_margin(8).show(ui, |ui| {
+            self.header(ui);
+            for error in [&self.error, &self.folder_error, &self.catalog.error]
+                .into_iter()
+                .flatten()
+            {
+                egui::Frame::NONE
+                    .fill(Color32::from_rgb(57, 32, 36))
+                    .corner_radius(6)
+                    .inner_margin(10)
+                    .show(ui, |ui| {
+                        ui.colored_label(Color32::from_rgb(255, 177, 170), error);
+                    });
+            }
+            let height = (ui.available_height() - 38.0).max(100.0);
+            let show_details =
+                self.inspector_open && ui.available_width() >= 944.0 && self.path.is_some();
+            let sidebar = if show_details { 216.0 } else { 0.0 };
+            let width =
+                (ui.available_width() - sidebar - if show_details { 8.0 } else { 0.0 }).max(100.0);
+            ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(width, height),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        ui.set_min_height(height);
+                        ui.set_min_width(width);
+                        if self.grid_view && self.folder.is_some() {
+                            self.library(ui);
+                        } else {
+                            self.viewer(ui);
+                        }
+                    },
+                );
+                if show_details {
+                    egui::Frame::NONE
+                        .fill(theme::SURFACE)
+                        .corner_radius(0)
+                        .inner_margin(8)
+                        .show(ui, |ui| {
+                            ui.set_width(200.0);
+                            ui.set_min_height((height - 16.0).max(0.0));
+                            egui::ScrollArea::vertical()
+                                .id_salt("inspector-scroll")
+                                .max_height((height - 16.0).max(0.0))
+                                .show(ui, |ui| {
+                                    ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                                        self.inspector(ui)
+                                    });
+                                });
+                        });
+                }
+            });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                let busy =
+                    self.loading || self.folder_loading || self.grid.busy() || self.detail.busy();
+                ui.label(
+                    RichText::new(if self.dialog.is_some() {
+                        "Esperando selección…"
+                    } else if busy {
+                        "Cargando…"
+                    } else {
+                        "Listo"
+                    })
+                    .small()
+                    .color(MUTED),
+                );
+                if self.grid_view && self.folder.is_some() {
+                    ui.separator();
+                    ui.label(
+                        RichText::new(format!(
+                            "{} / {} imágenes",
+                            self.catalog.filtered.len(),
+                            self.entries.len()
+                        ))
+                        .small()
+                        .color(MUTED),
+                    );
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.label(
+                        RichText::new(if self.grid_view {
+                            "Ctrl+clic: añadir · Shift+clic: rango · Doble clic: abrir"
+                        } else if self.path.is_some() {
+                            "Rueda: zoom · Arrastrar: desplazar · Home: ajustar"
+                        } else {
+                            "Ctrl+O: imagen · Ctrl+Shift+O: carpeta"
+                        })
+                        .small()
+                        .color(MUTED),
                     );
                 });
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), height),
-                Layout::top_down(Align::Min),
-                |ui| {
-                    if self.grid_view && !self.entries.is_empty() {
-                        self.catalog.filters(ui, &self.entries);
-                        if let Some(path) = self.grid.show(ui, &self.catalog.filtered, self.loading)
-                        {
-                            self.open_image(path);
-                            self.grid_view = !self.grid.open_viewer;
-                        }
-                    } else {
-                        self.viewer(ui);
-                    }
-                },
-            );
+            });
         });
+        self.auxiliary_windows(&ctx);
         self.catalog.editor(
             &ctx,
             self.path.as_deref(),
@@ -811,23 +1227,6 @@ impl eframe::App for RasteraApp {
                 ui.label("Los tiempos incluyen inspección, espera de memoria y procesamiento, hasta encolar el resultado. Los contadores abarcan esta sesión.");
             });
         }
-        if let Some(error) = &self.catalog.error {
-            ui.colored_label(Color32::LIGHT_RED, error);
-        }
-        ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(if self.loading || self.folder_loading || self.grid.busy() {
-                    "Cargando…"
-                } else {
-                    "Listo"
-                })
-                .small()
-                .color(MUTED),
-            );
-            if self.dialog.is_some() {
-                ui.label("Seleccionando archivo…");
-            }
-        });
         #[cfg(feature = "capture")]
         self.capture(&ctx);
     }

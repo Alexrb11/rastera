@@ -77,6 +77,20 @@ impl Catalog {
     pub fn invalidate(&mut self) {
         self.dirty = true;
     }
+    pub fn annotation(&self, path: &Path) -> Option<&Annotation> {
+        self.annotations.get(path)
+    }
+    pub fn clear_filters(&mut self) {
+        self.search.clear();
+        self.favorites = false;
+        self.format.clear();
+        self.dirty = true;
+    }
+    #[cfg(feature = "capture")]
+    pub fn capture_search(&mut self, search: String) {
+        self.search = search;
+        self.dirty = true;
+    }
     pub fn load(&mut self, paths: Vec<PathBuf>) {
         if let Err(error) = self.worker.request(CatalogCommand::Load {
             generation: self.generation,
@@ -121,7 +135,7 @@ impl Catalog {
         annotation.format = Some(info.kind.to_string());
         self.save(path.to_path_buf(), annotation, Some(info.clone()));
     }
-    fn save(&mut self, path: PathBuf, annotation: Annotation, info: Option<ImageInfo>) {
+    fn save(&mut self, path: PathBuf, annotation: Annotation, info: Option<ImageInfo>) -> bool {
         if let Err(error) = self.worker.request(CatalogCommand::Save {
             generation: self.generation,
             path: path.clone(),
@@ -129,10 +143,12 @@ impl Catalog {
             info,
         }) {
             self.error = Some(error.to_string());
+            false
         } else {
             self.pending.insert(path.clone());
             self.annotations.insert(path, annotation);
             self.dirty = true;
+            true
         }
     }
 
@@ -142,7 +158,7 @@ impl Catalog {
                 .add(
                     egui::TextEdit::singleline(&mut self.search)
                         .hint_text("Buscar nombre o etiqueta")
-                        .desired_width(220.0),
+                        .desired_width((ui.available_width() - 335.0).clamp(140.0, 300.0)),
                 )
                 .changed();
             self.dirty |= ui.checkbox(&mut self.favorites, "Solo favoritos").changed();
@@ -167,11 +183,10 @@ impl Catalog {
                             .changed();
                     }
                 });
-            if ui
-                .add_enabled(self.ready, egui::Button::new("Favoritos y etiquetas"))
-                .clicked()
+            if (!self.search.is_empty() || self.favorites || !self.format.is_empty())
+                && ui.button("Restablecer").clicked()
             {
-                self.editor_open = true;
+                self.clear_filters();
             }
         });
         if self.dirty {
@@ -224,12 +239,18 @@ impl Catalog {
             self.editor_tags = annotation.tags.join(", ");
         }
         let mut open = self.editor_open;
+        let mut saved = false;
         egui::Window::new("Organizar imagen")
             .open(&mut open)
             .default_width(360.0)
+            .collapsible(false)
             .show(ctx, |ui| {
                 if let Some(path) = path {
-                    ui.label(path.file_name().unwrap_or_default().to_string_lossy());
+                    ui.label(
+                        egui::RichText::new(path.file_name().unwrap_or_default().to_string_lossy())
+                            .strong(),
+                    );
+                    ui.add_space(8.0);
                     ui.checkbox(&mut self.editor_favorite, "Favorita");
                     ui.label("Etiquetas separadas por comas (hasta 32, de 64 caracteres)");
                     ui.add(
@@ -238,14 +259,14 @@ impl Catalog {
                             .desired_width(f32::INFINITY),
                     );
                     if ui
-                        .add_enabled(self.ready, egui::Button::new("Guardar"))
+                        .add_enabled(self.ready, crate::theme::primary("Guardar cambios"))
                         .clicked()
                     {
                         let mut annotation =
                             self.annotations.get(path).cloned().unwrap_or_default();
                         annotation.favorite = self.editor_favorite;
                         annotation.tags = normalize_tags(&self.editor_tags);
-                        self.save(path.to_path_buf(), annotation, info.cloned());
+                        saved = self.save(path.to_path_buf(), annotation, info.cloned());
                     }
                     ui.label(
                         "La organización se guarda en el catálogo local, sin modificar el archivo.",
@@ -257,7 +278,7 @@ impl Catalog {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 }
             });
-        self.editor_open = open;
+        self.editor_open = open && !saved;
     }
 }
 

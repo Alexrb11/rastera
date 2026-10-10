@@ -1,6 +1,6 @@
 # Medir recursos y tiempos
 
-El botón Rendimiento abre contadores locales de la sesión: reservas CPU actuales, máximo y límite; tamaños de píxeles GPU; cargas completadas, fallidas y canceladas; duración de la última carga; aciertos y decodificaciones solicitadas por la caché en disco.
+Herramientas → Diagnóstico de rendimiento abre contadores locales de la sesión: reservas CPU actuales, máximo y límite; tamaños de píxeles GPU; cargas completadas, fallidas y canceladas; duración de la última carga; aciertos y decodificaciones solicitadas por la caché en disco.
 
 Los [resultados iniciales del 10 de octubre de 2026](performance-results.md) incluyen las observaciones CSV y el equipo de referencia.
 

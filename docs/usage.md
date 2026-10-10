@@ -1,16 +1,18 @@
 # Usar Rastera
 
-Rendimiento abre los contadores de memoria, cargas y caché de esta sesión. Consulta [cómo medir recursos y tiempos](performance.md) para distinguir las estimaciones internas de la RAM del proceso y repetir las mediciones.
+La interfaz usa barras compactas de Archivo, Ver y Herramientas. Biblioteca sirve para seleccionar y filtrar; Visor, para examinar una imagen. Propiedades muestra dimensiones, tamaño, favorito y etiquetas en un panel lateral que puedes ocultar. En ventanas estrechas se abre como una ventana aparte.
+
+Herramientas → Diagnóstico de rendimiento abre los contadores de memoria, cargas y caché de esta sesión. Consulta [cómo medir recursos y tiempos](performance.md) para distinguir las estimaciones internas de la RAM del proceso y repetir las mediciones.
 
 ## Navegar y seleccionar
 
-Abre una carpeta desde el botón, la ruta, arrastrándola a la ventana o pasándola como argumento de inicio. La cuadrícula carga las miniaturas visibles; no recorre subcarpetas.
+Abre una carpeta desde Archivo, el botón, Ctrl+Shift+O, arrastrándola a la ventana o pasándola como argumento de inicio. Archivo → Abrir una ruta y la barra de ubicación permiten introducir una ruta. Ctrl+O abre una imagen. La cuadrícula carga las miniaturas visibles; no recorre subcarpetas.
 
-Un clic selecciona una imagen y actualiza sus detalles. Ctrl+clic añade o retira imágenes. Seleccionar todo actúa sobre las imágenes que muestra la cuadrícula, incluidos los resultados del filtro. Limpiar selección retira todas las seleccionadas.
+Un clic selecciona una imagen y actualiza sus propiedades. Ctrl+clic añade o retira imágenes. Shift+clic selecciona un rango según el orden visible; Ctrl+Shift+clic añade ese rango a la selección. Seleccionar todo y Ctrl+A actúan sobre los resultados del filtro. Deseleccionar y Esc retiran todas las seleccionadas. El menú contextual permite abrir en el visor y copiar la ruta. Las miniaturas ofrecen tres tamaños.
 
-La selección se mantiene al cambiar filtros; el contador incluye imágenes seleccionadas que hayan quedado ocultas. El plan de exportación permite revisar la selección completa.
+La selección se mantiene al cambiar filtros; el contador incluye imágenes seleccionadas que hayan quedado ocultas y muestra cuántas están fuera del filtro. Exportar selección incluye todas ellas. Restablecer limpia búsqueda, favorito y formato; no borra la selección. Cuando no hay coincidencias se ofrece restablecer los filtros.
 
-Doble clic abre el visor. Usa Cuadrícula para volver, las flechas para navegar, la rueda para ampliar, el arrastre para desplazar y Home para ajustar. Se muestra primero una vista previa de hasta 4.096 píxeles. Al ampliar por encima de su detalle, se vuelve a decodificar el original en un trabajador y se conservan sus píxeles normalizados por EXIF y color.
+Doble clic abre el visor. Usa Biblioteca o Esc para volver, las flechas para navegar, la rueda para ampliar, el arrastre para desplazar y Home para ajustar. Los botones anterior y siguiente se desactivan en los extremos. Se muestra primero una vista previa de hasta 4.096 píxeles. Al ampliar por encima de su detalle, se vuelve a decodificar el original en un trabajador y se conservan sus píxeles normalizados por EXIF y color.
 
 100% representa un píxel de imagen por píxel físico de pantalla, también con escalado de Windows. El zoom con rueda mantiene el punto bajo el cursor. Mientras se carga el detalle o si este falla, se conserva la vista previa; el inspector muestra el estado. La carga completa respeta los límites y el presupuesto compartido, por lo que algunas imágenes se rechazan por memoria. Se comprueba tamaño/fecha respecto a la vista inicial; no se detectan cambios que conserven ambos.
 
@@ -22,7 +24,7 @@ La caché de miniaturas está junto al catálogo, en thumbnails-v1. Se puede bor
 
 ## Organizar
 
-Selecciona una imagen y pulsa Organizar imagen, o Favoritos y etiquetas en la cuadrícula. Marca Favorita, escribe etiquetas separadas por comas y pulsa Guardar. Se admiten hasta 32 etiquetas de 64 caracteres; se recortan espacios y se eliminan duplicados.
+Selecciona una imagen y pulsa Propiedades → Editar organización. Marca Favorita, escribe etiquetas separadas por comas y pulsa Guardar cambios. Se admiten hasta 32 etiquetas de 64 caracteres; se recortan espacios y se eliminan duplicados. El panel muestra las etiquetas y las miniaturas identifican los favoritos.
 
 La búsqueda filtra por nombre o etiqueta sin distinguir mayúsculas. También puedes filtrar por favoritos y extensión de archivo. Los filtros actúan sobre la carpeta abierta.
 

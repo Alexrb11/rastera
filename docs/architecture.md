@@ -107,6 +107,8 @@ Los contratos permitirán sustituir un códec cuando haya una necesidad medida. 
 
 Un único hilo posee el estado visual y los handles de textura de egui. Envía comandos al motor y recibe eventos sin bloquear. Los comandos contienen identificadores y parámetros, no copias de los originales.
 
+La interfaz usa barras compactas de Archivo, Ver y Herramientas y una ubicación truncada. Biblioteca muestra filtros, selección y miniaturas; Visor ofrece navegación y zoom. Propiedades ocupa un panel lateral ocultable en ventanas anchas y una ventana independiente en las estrechas. El ancho del área principal se conserva incluso sin resultados. El color de selección y los controles discretos dan prioridad a comparar imágenes. Shift selecciona rangos en el orden filtrado; el contador diferencia las seleccionadas fuera del filtro. El tamaño de miniaturas cambia la distribución, sin ampliar su resolución de carga.
+
 Cada navegación crea una generación de vista. Las peticiones de miniaturas y previsualizaciones llevan esa generación, la identidad del archivo y su versión observada. Un resultado de una carpeta anterior puede servir a una caché válida, pero nunca reemplaza el contenido de la vista actual.
 
 Los eventos incluirán páginas del catálogo, miniaturas disponibles, previsualizaciones listas, progreso y errores por archivo. Las respuestas que transporten píxeles mantendrán una reserva de memoria hasta que el receptor los libere. El progreso se agrupa por intervalo o mediante el último estado disponible; no se crea un evento por píxel ni una acumulación sin límite.
