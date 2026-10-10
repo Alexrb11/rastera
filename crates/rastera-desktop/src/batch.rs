@@ -321,7 +321,7 @@ impl Batch {
                         });
                     }
                     ui.label("Se normaliza la orientación EXIF. Las salidas eliminan EXIF, GPS, XMP y otros metadatos.");
-                    ui.label("Solo 8 bits sin ICC; se asume sRGB. Los espacios de color PNG no compatibles se rechazan.");
+                    ui.label("ICC RGB de matriz/curvas → sRGB de 8 bits. Sin ICC se asume sRGB; HDR y otros perfiles se rechazan.");
                     ui.checkbox(&mut self.acknowledged, "Acepto esta política de color y metadatos");
                     if ui.add_enabled(!self.paths.is_empty() && !self.destination.trim().is_empty(), egui::Button::new("Revisar plan")).clicked() { self.prepare(); }
                 });

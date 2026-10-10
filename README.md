@@ -25,7 +25,7 @@ Windows será la primera plataforma de desarrollo. La separación entre interfaz
 - Revisión de nombres y dimensiones del lote, progreso, cancelación, resultados y recuperación de pendientes con huellas verificadas.
 - Renombrado por lotes en una fase posterior, con registro de operaciones y recuperación.
 
-El primer alcance cubrirá JPEG, PNG y WebP estáticos. La compatibilidad se comprobará mediante archivos de prueba; otros formatos y la gestión avanzada de color se incorporarán por separado.
+El primer alcance cubre JPEG, PNG y WebP estáticos SDR de 8 bits. Visor, miniaturas y lotes convierten perfiles ICC RGB compatibles de matriz y curvas a sRGB. Se rechazan HDR, CMYK, perfiles LUT y declaraciones PNG de color no compatibles. La compatibilidad se comprueba mediante archivos de prueba; otros formatos y la gestión avanzada de color se incorporarán por separado.
 
 ## Base técnica
 
@@ -58,6 +58,6 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-targets --all-features --locked
 ```
 
-La primera compilación descargará dependencias y tardará más que las siguientes. El visor limita la vista previa a 4.096 píxeles por lado. El zoom se aplica sobre esa vista; la carga completa bajo demanda y la gestión de color ICC siguen pendientes. Los límites iniciales son 128 MiB por archivo, 64 millones de píxeles y un presupuesto compartido de buffers de 512 MiB. Una imagen puede rechazarse por memoria aunque cumpla el límite de píxeles. Este presupuesto no equivale a la memoria total del proceso.
+La primera compilación descargará dependencias y tardará más que las siguientes. El visor limita la vista previa a 4.096 píxeles por lado. El zoom se aplica sobre esa vista; la carga completa bajo demanda y la conversión al perfil del monitor siguen pendientes. Los límites iniciales son 128 MiB por archivo, 64 millones de píxeles y un presupuesto compartido de buffers de 512 MiB. Una imagen puede rechazarse por memoria aunque cumpla el límite de píxeles. Este presupuesto no equivale a la memoria total del proceso.
 
 La característica opcional `capture` permite una comprobación visual del renderizado real: con `RASTERA_CAPTURE_TO` apuntando a un PNG, la aplicación guarda una captura cuando termina la carga y se cierra. Es una herramienta de desarrollo, deshabilitada por defecto.

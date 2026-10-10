@@ -2,7 +2,7 @@
 
 Este plan lleva la arquitectura desde el prototipo hasta una primera aplicación útil en Windows. Las fases se completan mediante criterios observables, no por una fecha estimada.
 
-El avance inicial incluye workspace, CI, visor nativo, navegación progresiva por carpetas, cuadrícula virtualizada y selección múltiple. Las miniaturas tienen una caché LRU acotada y un trabajador cancelable que comparte memoria con el visor. Se ha comprobado el renderizado en Windows. Las fases siguen abiertas: faltan validación de accesibilidad, carga de resolución completa en el visor, mediciones con bibliotecas grandes, observación de cambios externos y recuperación automática de lotes. El catálogo local ya guarda favoritos, etiquetas y dimensiones, con búsqueda y filtros en la carpeta abierta.
+El avance inicial incluye workspace, CI, visor nativo, navegación progresiva por carpetas, cuadrícula virtualizada y selección múltiple. Las miniaturas tienen una caché LRU en GPU y una caché persistente acotada en disco, con un trabajador cancelable que comparte memoria con el visor. Se ha comprobado el renderizado en Windows. Las fases siguen abiertas: faltan validación de accesibilidad, carga de resolución completa en el visor, mediciones con bibliotecas grandes, observación de cambios externos y descubrimiento de diarios al iniciar. El catálogo local ya guarda favoritos, etiquetas y dimensiones, con búsqueda y filtros en la carpeta abierta.
 
 ## Fase 1 Base técnica y visor
 
@@ -44,7 +44,7 @@ Criterios de aceptación:
 
 ## Fase 4 Exportación por lotes
 
-Implementado: recetas PNG/JPEG/WebP, orientación y rotación, redimensionado desde el original, plan de nombres/dimensiones, progreso, errores por archivo, cancelación y diario persistente. La recuperación revisada comprueba huellas y reanuda los pendientes en otro diario, conservando conflictos. Hay pruebas de colisiones, color no compatible, resolución completa, bloqueo de sesiones activas, cambios sin alterar tamaño/fecha y publicación seguida de fallo del diario. Pendiente: descubrimiento de diarios al iniciar, validación en otros volúmenes y mediciones durante lotes grandes.
+Implementado: recetas PNG/JPEG/WebP, conversión ICC RGB compatible a sRGB, orientación y rotación, redimensionado desde el original, plan de nombres/dimensiones, progreso, errores por archivo, cancelación y diario persistente. La recuperación revisada comprueba huellas y reanuda los pendientes en otro diario, conservando conflictos. Hay pruebas de colisiones, color con referencia independiente, resolución completa, bloqueo de sesiones activas, cambios sin alterar tamaño/fecha y publicación seguida de fallo del diario. Pendiente: descubrimiento de diarios al iniciar, perfil del monitor, validación en otros volúmenes y mediciones durante lotes grandes.
 
 Implementar recetas de redimensionado, rotación y conversión. Añadir previsualización del plan, progreso por ítem, cancelación y diario de recuperación. Las salidas se escriben en una carpeta distinta y sin sobrescribir originales.
 

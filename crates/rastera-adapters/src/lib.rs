@@ -11,4 +11,5 @@ mod batch;
 pub use batch::LocalBatch;
 mod thumbnails;
 pub use thumbnails::CachedThumbnails;
+mod color;
 mod recovery;

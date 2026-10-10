@@ -33,7 +33,9 @@ Si falla el catálogo, la aplicación muestra el error y permite continuar usand
 5. Lee y acepta la política de color y metadatos. Pulsa Revisar plan para comprobar nombres y dimensiones.
 6. Pulsa Exportar copias. Puedes seguir navegando mientras avanza el lote.
 
-La receta normaliza la orientación EXIF antes de rotar y redimensionar. Solo admite entradas de 8 bits sin perfil ICC y asume sRGB; se rechazan declaraciones PNG de color no compatibles. Las salidas eliminan metadatos originales, incluidos EXIF, GPS y XMP. PNG y WebP conservan transparencia; JPEG se recodifica con el fondo indicado.
+La receta normaliza la orientación EXIF antes de rotar y redimensionar. Visor, miniaturas y lotes admiten SDR de 8 bits y convierten perfiles ICC RGB compatibles de matriz y curvas a sRGB antes de reducir la imagen. Sin ICC se asume sRGB. Las salidas eliminan metadatos originales, incluidos EXIF, GPS y XMP, y reciben un perfil sRGB nuevo. PNG y WebP conservan transparencia; JPEG se recodifica con el fondo indicado.
+
+La conversión usa intención colorimétrica relativa y limita los colores al rango sRGB; algunos colores de espacios amplios quedan recortados. Se rechazan perfiles inválidos, LUT, CMYK, HDR, grises con ICC y declaraciones PNG no compatibles, incluidas cICP y gamma/primarias no sRGB sin ICC. El inspector confirma la conversión del ICC cuando la vista se carga. No hay conversión al perfil del monitor ni soporte de HDR; no se promete fidelidad profesional.
 
 Las salidas se llaman nombre-rastera.ext. Las entradas que producirían nombres equivalentes o destinos ya existentes impiden aprobar el plan. Una colisión durante la ejecución produce un error sin reemplazar el archivo.
 

@@ -5,14 +5,13 @@ use crate::{
 use image::{DynamicImage, ImageEncoder, metadata::Orientation};
 use rastera_core::{
     BatchBackend, CPU_IMAGE_BUDGET, CancellationToken, ErrorKind, ExportFormat, ExportItem,
-    ExportPlan, ExportRecipe, ExportSession, ImageInfo, ImageKind, RasteraError, RecoveryReport,
-    Result,
+    ExportPlan, ExportRecipe, ExportSession, ImageInfo, RasteraError, RecoveryReport, Result,
 };
 use rusqlite::{Connection, params};
 use std::{
     collections::HashSet,
     fs::{self, File},
-    io::{BufReader, BufWriter, Read, Write},
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -68,48 +67,9 @@ fn journal_error(error: rusqlite::Error) -> RasteraError {
 fn ensure_export_color(
     path: &Path,
     info: &ImageInfo,
-    decoder: &dyn image::ImageDecoder,
-) -> Result<()> {
-    let color = decoder.color_type();
-    if info.has_color_profile
-        || !matches!(
-            color,
-            image::ColorType::L8
-                | image::ColorType::La8
-                | image::ColorType::Rgb8
-                | image::ColorType::Rgba8
-        )
-    {
-        return Err(RasteraError::new(
-            ErrorKind::Unsupported,
-            "Los lotes admiten imágenes de 8 bits sin perfil ICC; la gestión de color está pendiente",
-        ));
-    }
-    if info.kind == ImageKind::Png {
-        let png = png::Decoder::new_with_limits(
-            BufReader::new(File::open(path).map_err(io_error)?),
-            png::Limits {
-                bytes: 16 * 1024 * 1024,
-            },
-        );
-        let reader = png
-            .read_info()
-            .map_err(|error| RasteraError::new(ErrorKind::InvalidImage, error.to_string()))?;
-        let header = reader.info();
-        if header.coding_independent_code_points.is_some()
-            || (header.srgb.is_none()
-                && (header.chrm_chunk.is_some()
-                    || header
-                        .gama_chunk
-                        .is_some_and(|gamma| (gamma.into_value() - 0.45455).abs() > 0.0001)))
-        {
-            return Err(RasteraError::new(
-                ErrorKind::Unsupported,
-                "Este PNG declara un espacio de color que los lotes todavía no pueden convertir",
-            ));
-        }
-    }
-    Ok(())
+    decoder: &mut dyn image::ImageDecoder,
+) -> Result<Option<moxcms::ColorProfile>> {
+    crate::color::profile(path, info, decoder)
 }
 
 impl BatchBackend for LocalBatch {
@@ -149,7 +109,7 @@ impl BatchBackend for LocalBatch {
                 ));
             }
             let (info, mut decoder) = decoder(&source)?;
-            ensure_export_color(&source, &info, decoder.as_ref())?;
+            ensure_export_color(&source, &info, decoder.as_mut())?;
             if info.working_bytes()?.saturating_mul(2) > CPU_IMAGE_BUDGET {
                 return Err(RasteraError::new(
                     ErrorKind::TooLarge,
@@ -298,10 +258,11 @@ impl ExportSession for LocalExportSession {
                 "El original cambió después de revisar el plan",
             ));
         }
-        ensure_export_color(&item.source, &info, decoder.as_ref())?;
+        let profile = ensure_export_color(&item.source, &info, decoder.as_mut())?;
         let orientation = decoder.orientation().map_err(image_error)?;
         let mut image = DynamicImage::from_decoder(decoder).map_err(image_error)?;
         cancel.check()?;
+        image = crate::color::convert(image, profile.as_ref(), cancel)?;
         image.apply_orientation(orientation);
         image = match recipe.rotation {
             90 => image.rotate90(),
@@ -337,22 +298,36 @@ impl ExportSession for LocalExportSession {
         {
             let mut writer = BufWriter::new(temporary.as_file_mut());
             match recipe.format {
-                ExportFormat::Png => image::codecs::png::PngEncoder::new(&mut writer)
-                    .write_image(
-                        image.as_raw(),
-                        image.width(),
-                        image.height(),
-                        image::ExtendedColorType::Rgba8,
-                    )
-                    .map_err(image_error)?,
-                ExportFormat::WebP => image::codecs::webp::WebPEncoder::new_lossless(&mut writer)
-                    .write_image(
-                        image.as_raw(),
-                        image.width(),
-                        image.height(),
-                        image::ExtendedColorType::Rgba8,
-                    )
-                    .map_err(image_error)?,
+                ExportFormat::Png => {
+                    let mut encoder = image::codecs::png::PngEncoder::new(&mut writer);
+                    encoder
+                        .set_icc_profile(crate::color::srgb_profile()?)
+                        .map_err(image::ImageError::Unsupported)
+                        .map_err(image_error)?;
+                    encoder
+                        .write_image(
+                            image.as_raw(),
+                            image.width(),
+                            image.height(),
+                            image::ExtendedColorType::Rgba8,
+                        )
+                        .map_err(image_error)?;
+                }
+                ExportFormat::WebP => {
+                    let mut encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut writer);
+                    encoder
+                        .set_icc_profile(crate::color::srgb_profile()?)
+                        .map_err(image::ImageError::Unsupported)
+                        .map_err(image_error)?;
+                    encoder
+                        .write_image(
+                            image.as_raw(),
+                            image.width(),
+                            image.height(),
+                            image::ExtendedColorType::Rgba8,
+                        )
+                        .map_err(image_error)?;
+                }
                 ExportFormat::Jpeg => {
                     let rgb = image::RgbImage::from_fn(image.width(), image.height(), |x, y| {
                         let pixel = image.get_pixel(x, y).0;
@@ -364,12 +339,15 @@ impl ExportSession for LocalExportSession {
                                 / 255) as u8
                         }))
                     });
-                    image::codecs::jpeg::JpegEncoder::new_with_quality(
+                    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
                         &mut writer,
                         recipe.jpeg_quality,
-                    )
-                    .encode_image(&rgb)
-                    .map_err(image_error)?;
+                    );
+                    encoder
+                        .set_icc_profile(crate::color::srgb_profile()?)
+                        .map_err(image::ImageError::Unsupported)
+                        .map_err(image_error)?;
+                    encoder.encode_image(&rgb).map_err(image_error)?;
                 }
             }
             writer.flush().map_err(io_error)?;
@@ -640,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn refuses_high_bit_depth_icc_and_custom_png_gamma() {
+    fn refuses_high_bit_depth_invalid_icc_and_custom_png_gamma() {
         let (_dir, source, output) = fixture();
         image::ImageBuffer::<image::Rgba<u16>, _>::from_pixel(
             2,

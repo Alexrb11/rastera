@@ -85,6 +85,16 @@ pub(crate) fn decoder(path: &Path) -> Result<(ImageInfo, Box<dyn ImageDecoder>)>
         }
     };
     let (width, height) = decoder.dimensions();
+    let icc = decoder.icc_profile().map_err(image_error)?;
+    if icc
+        .as_ref()
+        .is_some_and(|bytes| bytes.len() >= 4 * 1024 * 1024)
+    {
+        return Err(RasteraError::new(
+            ErrorKind::TooLarge,
+            "El perfil ICC supera el límite de 4 MiB",
+        ));
+    }
     let info = ImageInfo {
         width,
         height,
@@ -94,7 +104,7 @@ pub(crate) fn decoder(path: &Path) -> Result<(ImageInfo, Box<dyn ImageDecoder>)>
             _ => ImageKind::WebP,
         },
         stamp: version,
-        has_color_profile: decoder.icc_profile().map_err(image_error)?.is_some(),
+        has_color_profile: icc.is_some(),
     };
     info.pixels()?;
     decoder.set_limits(limits).map_err(image_error)?;
@@ -128,8 +138,10 @@ impl ImageBackend for LocalImages {
             ));
         }
         let orientation = decoder.orientation().map_err(image_error)?;
+        let profile = crate::color::profile(path, &info, decoder.as_mut())?;
         let mut image = DynamicImage::from_decoder(decoder).map_err(image_error)?;
         cancel.check()?;
+        image = crate::color::convert(image, profile.as_ref(), cancel)?;
         image.apply_orientation(orientation);
         if image.width() > max_edge || image.height() > max_edge {
             image = image.thumbnail(max_edge, max_edge);

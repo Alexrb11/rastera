@@ -477,10 +477,7 @@ impl RasteraApp {
             ));
             if preview.info.has_color_profile {
                 ui.add_space(8.0);
-                ui.label(
-                    RichText::new("Perfil ICC detectado. La gestión de color está pendiente.")
-                        .color(Color32::YELLOW),
-                );
+                ui.label(RichText::new("Perfil ICC convertido a sRGB.").color(MUTED));
             }
             if preview.size.x as u32 != preview.info.width
                 || preview.size.y as u32 != preview.info.height

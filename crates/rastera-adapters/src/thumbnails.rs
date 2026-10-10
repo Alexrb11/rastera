@@ -50,7 +50,7 @@ impl CachedThumbnails {
     }
     fn key(path: &Path, info: &ImageInfo, edge: u32) -> Vec<u8> {
         let mut key = path_key(path);
-        key.extend(format!("|{:?}|{edge}|pipeline-1", info.stamp).bytes());
+        key.extend(format!("|{:?}|{edge}|pipeline-2-srgb", info.stamp).bytes());
         key
     }
     fn hash(bytes: &[u8]) -> u64 {
