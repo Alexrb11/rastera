@@ -15,6 +15,16 @@ struct Thumbnail {
     touched: u64,
 }
 
+#[cfg(feature = "capture")]
+#[derive(Clone, Copy, Default)]
+pub struct GridFrame {
+    pub first: usize,
+    pub last: usize,
+    pub visible: usize,
+    pub ready: usize,
+    pub errors: usize,
+}
+
 pub struct ThumbnailGrid {
     backend: Arc<CachedThumbnails>,
     loader: ImageLoader,
@@ -26,6 +36,10 @@ pub struct ThumbnailGrid {
     pub open_viewer: bool,
     anchor: Option<PathBuf>,
     pub density: u8,
+    #[cfg(feature = "capture")]
+    pub benchmark_index: Option<usize>,
+    #[cfg(feature = "capture")]
+    pub measurement: GridFrame,
 }
 
 impl ThumbnailGrid {
@@ -47,6 +61,10 @@ impl ThumbnailGrid {
             open_viewer: false,
             anchor: None,
             density: 1,
+            #[cfg(feature = "capture")]
+            benchmark_index: None,
+            #[cfg(feature = "capture")]
+            measurement: GridFrame::default(),
         }
     }
 
@@ -187,201 +205,226 @@ impl ThumbnailGrid {
             + 30.0;
         let mut wanted = None;
         let mut pending_visible = false;
-        egui::ScrollArea::vertical()
+        #[cfg(feature = "capture")]
+        let mut frame = GridFrame::default();
+        let scroll = egui::ScrollArea::vertical()
             .id_salt(("thumbnail-grid", self.density))
-            .auto_shrink([false, false])
-            .show_rows(
-                ui,
-                row_height,
-                entries.len().div_ceil(columns),
-                |ui, rows| {
-                    for row in rows {
-                        ui.horizontal(|ui| {
-                            for entry in entries
-                                .iter()
-                                .take(((row + 1) * columns).min(entries.len()))
-                                .skip(row * columns)
+            .auto_shrink([false, false]);
+        #[cfg(feature = "capture")]
+        let scroll = if let Some(index) = self.benchmark_index {
+            let maximum = (entries.len().div_ceil(columns) as f32 * row_height
+                - ui.available_height())
+            .max(0.0);
+            scroll.vertical_scroll_offset(((index / columns) as f32 * row_height).min(maximum))
+        } else {
+            scroll
+        };
+        scroll.show_rows(
+            ui,
+            row_height,
+            entries.len().div_ceil(columns),
+            |ui, rows| {
+                for row in rows {
+                    ui.horizontal(|ui| {
+                        for entry in entries
+                            .iter()
+                            .take(((row + 1) * columns).min(entries.len()))
+                            .skip(row * columns)
+                        {
+                            let path = &entry.path;
+                            #[cfg(feature = "capture")]
                             {
-                                let path = &entry.path;
-                                self.clock += 1;
-                                pending_visible |= self.pending.as_ref() == Some(path);
-                                let selected = self.selected.contains(path);
-                                let (rect, response) = ui.allocate_exact_size(
-                                    egui::vec2(tile_width, row_height - spacing),
-                                    Sense::click(),
-                                );
-                                let color = if selected {
-                                    theme::SELECTED
-                                } else if response.hovered() {
-                                    Color32::from_rgb(45, 47, 50)
-                                } else {
-                                    theme::BACKGROUND
-                                };
-                                ui.painter().rect_filled(rect, 2.0, color);
-                                ui.painter().rect_stroke(
-                                    rect,
-                                    2.0,
-                                    egui::Stroke::new(
-                                        if selected || current == Some(path.as_path()) {
-                                            1.0
-                                        } else {
-                                            0.0
-                                        },
-                                        if selected {
-                                            theme::ACCENT
-                                        } else if current == Some(path.as_path()) {
-                                            theme::MUTED
-                                        } else {
-                                            theme::BORDER
-                                        },
-                                    ),
-                                    egui::StrokeKind::Inside,
-                                );
-                                let area = Rect::from_min_max(
-                                    rect.min + egui::vec2(5.0, 5.0),
-                                    rect.max - egui::vec2(5.0, 26.0),
-                                );
-                                ui.painter().rect_filled(area, 0.0, theme::BACKGROUND);
-                                if let Some(thumbnail) = self.cache.get_mut(path) {
-                                    thumbnail.touched = self.clock;
-                                    if let Some(texture) = &thumbnail.texture {
-                                        let scale = (area.width() / thumbnail.size.x)
-                                            .min(area.height() / thumbnail.size.y);
-                                        ui.painter().image(
-                                            texture.id(),
-                                            Rect::from_center_size(
-                                                area.center(),
-                                                thumbnail.size * scale,
-                                            ),
-                                            Rect::from_min_max(
-                                                egui::Pos2::ZERO,
-                                                egui::pos2(1.0, 1.0),
-                                            ),
-                                            Color32::WHITE,
-                                        );
+                                if frame.visible == 0 {
+                                    frame.first = row * columns;
+                                }
+                                frame.visible += 1;
+                                // The interval is exclusive and includes the virtualizer's overscan rows.
+                                frame.last = frame.first + frame.visible;
+                            }
+                            self.clock += 1;
+                            pending_visible |= self.pending.as_ref() == Some(path);
+                            let selected = self.selected.contains(path);
+                            let (rect, response) = ui.allocate_exact_size(
+                                egui::vec2(tile_width, row_height - spacing),
+                                Sense::click(),
+                            );
+                            let color = if selected {
+                                theme::SELECTED
+                            } else if response.hovered() {
+                                Color32::from_rgb(45, 47, 50)
+                            } else {
+                                theme::BACKGROUND
+                            };
+                            ui.painter().rect_filled(rect, 2.0, color);
+                            ui.painter().rect_stroke(
+                                rect,
+                                2.0,
+                                egui::Stroke::new(
+                                    if selected || current == Some(path.as_path()) {
+                                        1.0
                                     } else {
-                                        ui.painter().text(
+                                        0.0
+                                    },
+                                    if selected {
+                                        theme::ACCENT
+                                    } else if current == Some(path.as_path()) {
+                                        theme::MUTED
+                                    } else {
+                                        theme::BORDER
+                                    },
+                                ),
+                                egui::StrokeKind::Inside,
+                            );
+                            let area = Rect::from_min_max(
+                                rect.min + egui::vec2(5.0, 5.0),
+                                rect.max - egui::vec2(5.0, 26.0),
+                            );
+                            ui.painter().rect_filled(area, 0.0, theme::BACKGROUND);
+                            if let Some(thumbnail) = self.cache.get_mut(path) {
+                                #[cfg(feature = "capture")]
+                                {
+                                    frame.ready += 1;
+                                    frame.errors += usize::from(thumbnail.error.is_some());
+                                }
+                                thumbnail.touched = self.clock;
+                                if let Some(texture) = &thumbnail.texture {
+                                    let scale = (area.width() / thumbnail.size.x)
+                                        .min(area.height() / thumbnail.size.y);
+                                    ui.painter().image(
+                                        texture.id(),
+                                        Rect::from_center_size(
                                             area.center(),
-                                            egui::Align2::CENTER_CENTER,
-                                            "No disponible",
-                                            egui::FontId::proportional(12.0),
-                                            Color32::LIGHT_RED,
-                                        );
-                                        response.clone().on_hover_text(
-                                            thumbnail.error.as_deref().unwrap_or_default(),
-                                        );
-                                    }
+                                            thumbnail.size * scale,
+                                        ),
+                                        Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                                        Color32::WHITE,
+                                    );
                                 } else {
-                                    wanted.get_or_insert_with(|| path.clone());
                                     ui.painter().text(
                                         area.center(),
                                         egui::Align2::CENTER_CENTER,
-                                        "Cargando…",
+                                        "No disponible",
                                         egui::FontId::proportional(12.0),
-                                        theme::MUTED,
+                                        Color32::LIGHT_RED,
+                                    );
+                                    response.clone().on_hover_text(
+                                        thumbnail.error.as_deref().unwrap_or_default(),
                                     );
                                 }
-                                let name = path.file_name().unwrap_or_default().to_string_lossy();
-                                let mut job = egui::text::LayoutJob::simple(
-                                    name.to_string(),
+                            } else {
+                                wanted.get_or_insert_with(|| path.clone());
+                                ui.painter().text(
+                                    area.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    "Cargando…",
                                     egui::FontId::proportional(12.0),
-                                    theme::TEXT,
-                                    tile_width - 10.0,
+                                    theme::MUTED,
                                 );
-                                job.wrap.max_rows = 1;
-                                job.wrap.break_anywhere = true;
-                                let galley = ui.painter().layout_job(job);
-                                ui.painter().galley(
-                                    egui::pos2(rect.min.x + 5.0, rect.max.y - 21.0),
-                                    galley,
-                                    theme::TEXT,
-                                );
-                                response.widget_info(|| {
-                                    egui::WidgetInfo::selected(
-                                        egui::WidgetType::Button,
-                                        ui.is_enabled(),
-                                        selected,
-                                        &name,
-                                    )
-                                });
-                                if selected || response.hovered() {
-                                    let center = area.left_top() + egui::vec2(12.0, 12.0);
-                                    ui.painter().rect_filled(
-                                        Rect::from_center_size(center, egui::vec2(14.0, 14.0)),
-                                        1.0,
-                                        if selected {
-                                            theme::ACCENT
-                                        } else {
-                                            theme::SURFACE
-                                        },
-                                    );
-                                    ui.painter().rect_stroke(
-                                        Rect::from_center_size(center, egui::vec2(14.0, 14.0)),
-                                        1.0,
-                                        egui::Stroke::new(1.0, theme::ACCENT),
-                                        egui::StrokeKind::Inside,
-                                    );
+                            }
+                            let name = path.file_name().unwrap_or_default().to_string_lossy();
+                            let mut job = egui::text::LayoutJob::simple(
+                                name.to_string(),
+                                egui::FontId::proportional(12.0),
+                                theme::TEXT,
+                                tile_width - 10.0,
+                            );
+                            job.wrap.max_rows = 1;
+                            job.wrap.break_anywhere = true;
+                            let galley = ui.painter().layout_job(job);
+                            ui.painter().galley(
+                                egui::pos2(rect.min.x + 5.0, rect.max.y - 21.0),
+                                galley,
+                                theme::TEXT,
+                            );
+                            response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::Button,
+                                    ui.is_enabled(),
+                                    selected,
+                                    &name,
+                                )
+                            });
+                            if selected || response.hovered() {
+                                let center = area.left_top() + egui::vec2(12.0, 12.0);
+                                ui.painter().rect_filled(
+                                    Rect::from_center_size(center, egui::vec2(14.0, 14.0)),
+                                    1.0,
                                     if selected {
-                                        ui.painter().line_segment(
-                                            [
-                                                center + egui::vec2(-4.0, 0.0),
-                                                center + egui::vec2(-1.0, 3.0),
-                                            ],
-                                            egui::Stroke::new(1.8, theme::BACKGROUND),
-                                        );
-                                        ui.painter().line_segment(
-                                            [
-                                                center + egui::vec2(-1.0, 3.0),
-                                                center + egui::vec2(4.0, -3.0),
-                                            ],
-                                            egui::Stroke::new(1.8, theme::BACKGROUND),
-                                        );
-                                    }
-                                }
-                                if catalog.annotation(path).is_some_and(|a| a.favorite) {
-                                    let badge = Rect::from_min_size(
-                                        area.right_top() - egui::vec2(68.0, -4.0),
-                                        egui::vec2(64.0, 20.0),
+                                        theme::ACCENT
+                                    } else {
+                                        theme::SURFACE
+                                    },
+                                );
+                                ui.painter().rect_stroke(
+                                    Rect::from_center_size(center, egui::vec2(14.0, 14.0)),
+                                    1.0,
+                                    egui::Stroke::new(1.0, theme::ACCENT),
+                                    egui::StrokeKind::Inside,
+                                );
+                                if selected {
+                                    ui.painter().line_segment(
+                                        [
+                                            center + egui::vec2(-4.0, 0.0),
+                                            center + egui::vec2(-1.0, 3.0),
+                                        ],
+                                        egui::Stroke::new(1.8, theme::BACKGROUND),
                                     );
-                                    ui.painter().rect_filled(badge, 4.0, theme::SURFACE);
-                                    ui.painter().text(
-                                        badge.center(),
-                                        egui::Align2::CENTER_CENTER,
-                                        "Favorita",
-                                        egui::FontId::proportional(11.0),
-                                        theme::ACCENT,
+                                    ui.painter().line_segment(
+                                        [
+                                            center + egui::vec2(-1.0, 3.0),
+                                            center + egui::vec2(4.0, -3.0),
+                                        ],
+                                        egui::Stroke::new(1.8, theme::BACKGROUND),
                                     );
                                 }
-                                response.clone().on_hover_text(format!(
-                                    "{name}\n{}\nCtrl+clic: añadir · Shift+clic: rango",
-                                    path.display()
-                                ));
-                                if response.clicked() {
-                                    let modifiers = ui.input(|input| input.modifiers);
-                                    clicked =
-                                        Some((path.clone(), modifiers.command, modifiers.shift));
-                                    opened = Some(path.clone());
-                                }
-                                if response.double_clicked() {
+                            }
+                            if catalog.annotation(path).is_some_and(|a| a.favorite) {
+                                let badge = Rect::from_min_size(
+                                    area.right_top() - egui::vec2(68.0, -4.0),
+                                    egui::vec2(64.0, 20.0),
+                                );
+                                ui.painter().rect_filled(badge, 4.0, theme::SURFACE);
+                                ui.painter().text(
+                                    badge.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    "Favorita",
+                                    egui::FontId::proportional(11.0),
+                                    theme::ACCENT,
+                                );
+                            }
+                            response.clone().on_hover_text(format!(
+                                "{name}\n{}\nCtrl+clic: añadir · Shift+clic: rango",
+                                path.display()
+                            ));
+                            if response.clicked() {
+                                let modifiers = ui.input(|input| input.modifiers);
+                                clicked = Some((path.clone(), modifiers.command, modifiers.shift));
+                                opened = Some(path.clone());
+                            }
+                            if response.double_clicked() {
+                                self.open_viewer = true;
+                                opened = Some(path.clone());
+                            }
+                            response.context_menu(|ui| {
+                                if ui.button("Abrir en visor").clicked() {
                                     self.open_viewer = true;
                                     opened = Some(path.clone());
+                                    ui.close();
                                 }
-                                response.context_menu(|ui| {
-                                    if ui.button("Abrir en visor").clicked() {
-                                        self.open_viewer = true;
-                                        opened = Some(path.clone());
-                                        ui.close();
-                                    }
-                                    if ui.button("Copiar ruta").clicked() {
-                                        ui.ctx().copy_text(path.to_string_lossy().into_owned());
-                                        ui.close();
-                                    }
-                                });
-                            }
-                        });
-                    }
-                },
-            );
+                                if ui.button("Copiar ruta").clicked() {
+                                    ui.ctx().copy_text(path.to_string_lossy().into_owned());
+                                    ui.close();
+                                }
+                            });
+                        }
+                    });
+                }
+            },
+        );
+        #[cfg(feature = "capture")]
+        {
+            self.measurement = frame;
+        }
         if let Some((path, additive, range)) = clicked {
             self.select(&path, entries, additive, range);
         }

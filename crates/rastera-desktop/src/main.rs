@@ -3,6 +3,8 @@ mod batch;
 mod catalog;
 mod detail;
 mod grid;
+#[cfg(feature = "capture")]
+mod navigation;
 mod theme;
 
 fn main() -> eframe::Result {

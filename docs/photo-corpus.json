@@ -1,0 +1,67 @@
+{
+  "photos": [
+    {
+      "file": "photo-00.jpg",
+      "title": "Landscape of Nature.jpg",
+      "author": "Yasir 48",
+      "license": "CC0 1.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Landscape_of_Nature.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/1/14/Landscape_of_Nature.jpg",
+      "sha256": "17042cf5171acffb88fb4a8e41f5db53c25158442a614f18b464f15081a942a1",
+      "bytes": 3420281,
+      "width": 4032,
+      "height": 2268,
+      "mode": "RGB",
+      "icc_bytes": 456,
+      "exif_orientation": 1
+    },
+    {
+      "file": "photo-01.jpg",
+      "title": "Landscape of a wild forest.jpg",
+      "author": "SpessiG",
+      "license": "CC0 1.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Landscape_of_a_wild_forest.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/c/c9/Landscape_of_a_wild_forest.jpg",
+      "sha256": "2f9f01326230bf9166eec430eb6d14cac69412d6cf6e2ecc7a25970683e4ddea",
+      "bytes": 4978501,
+      "width": 3136,
+      "height": 2091,
+      "mode": "RGB",
+      "icc_bytes": 3144,
+      "exif_orientation": 1
+    },
+    {
+      "file": "photo-02.jpg",
+      "title": "Landscape with clouds.jpg",
+      "author": "Aammell",
+      "license": "CC0 1.0",
+      "source": "https://commons.wikimedia.org/wiki/File:Landscape_with_clouds.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/8/83/Landscape_with_clouds.jpg",
+      "sha256": "d266b5bfa1179a6298f1c084e8c539ef81698643f7c45d9adb34d43a30ed2758",
+      "bytes": 399226,
+      "width": 4000,
+      "height": 3000,
+      "mode": "RGB",
+      "icc_bytes": 560,
+      "exif_orientation": 1
+    },
+    {
+      "file": "photo-03.jpg",
+      "title": "San Francisco city skyline.jpg",
+      "author": "Lisafern",
+      "license": "CC0 1.0",
+      "source": "https://commons.wikimedia.org/wiki/File:San_Francisco_city_skyline.jpg",
+      "download": "https://upload.wikimedia.org/wikipedia/commons/e/ea/San_Francisco_city_skyline.jpg",
+      "sha256": "4cbac7d3080b68ff7b0c7c5469fc9fbdabb047ca526f2d837c53764decb1d794",
+      "bytes": 6011355,
+      "width": 2845,
+      "height": 1506,
+      "mode": "RGB",
+      "icc_bytes": 3144,
+      "exif_orientation": 1
+    }
+  ],
+  "corpus": "144 copias físicas sin recodificar, distribuidas cíclicamente por nombre",
+  "unique_photos": 4,
+  "files": 144
+}

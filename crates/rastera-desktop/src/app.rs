@@ -49,6 +49,8 @@ pub struct RasteraApp {
     capture_requested: bool,
     #[cfg(feature = "capture")]
     capture_ready_at: Option<std::time::Instant>,
+    #[cfg(feature = "capture")]
+    navigation: Option<crate::navigation::NavigationBenchmark>,
 }
 
 impl RasteraApp {
@@ -101,6 +103,8 @@ impl RasteraApp {
             capture_requested: false,
             #[cfg(feature = "capture")]
             capture_ready_at: None,
+            #[cfg(feature = "capture")]
+            navigation: crate::navigation::NavigationBenchmark::from_env(),
         };
         if let Some(path) = initial {
             app.open(path);
@@ -1112,11 +1116,33 @@ fn file_size(bytes: u64) -> String {
 }
 impl eframe::App for RasteraApp {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        #[cfg(feature = "capture")]
+        let ui_started = std::time::Instant::now();
         let ctx = ui.ctx().clone();
         ui.set_style(ctx.global_style());
         ui.painter()
             .rect_filled(ui.max_rect(), 0.0, theme::BACKGROUND);
         self.receive(&ctx);
+        #[cfg(feature = "capture")]
+        if let Some(benchmark) = &mut self.navigation {
+            let action = benchmark.begin(
+                self.entries.len(),
+                self.folder_loading,
+                self.grid.diagnostics().2,
+            );
+            if let Some(action) = action {
+                match action {
+                    crate::navigation::Action::Grid(index) => {
+                        self.grid_view = true;
+                        self.grid.benchmark_index = Some(index);
+                    }
+                    crate::navigation::Action::Viewer(index) => {
+                        self.grid_view = false;
+                        self.open_image(self.entries[index].path.clone());
+                    }
+                }
+            }
+        }
         self.shortcuts(&ctx);
         egui::Frame::NONE.inner_margin(8).show(ui, |ui| {
             self.header(ui);
@@ -1248,6 +1274,32 @@ impl eframe::App for RasteraApp {
         }
         #[cfg(feature = "capture")]
         self.capture(&ctx);
+        #[cfg(feature = "capture")]
+        if let Some(benchmark) = &mut self.navigation {
+            let (textures, _, cache) = self.grid.diagnostics();
+            let sample = crate::navigation::Observation {
+                grid: if self.grid_view {
+                    self.grid.measurement
+                } else {
+                    Default::default()
+                },
+                viewer_ready: !self.loading && self.preview.is_some(),
+                viewer_error: !self.loading && self.error.is_some(),
+                reserved: self.budget.used(),
+                peak: self.budget.peak(),
+                textures,
+                cache,
+                ui_elapsed: ui_started.elapsed(),
+            };
+            match benchmark.observe(sample) {
+                Ok(true) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                Ok(false) => ctx.request_repaint_after(std::time::Duration::from_millis(10)),
+                Err(error) => {
+                    eprintln!("Medición de navegación falló: {error}");
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+        }
     }
 }
 

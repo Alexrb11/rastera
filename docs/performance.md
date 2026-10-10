@@ -39,6 +39,22 @@ Los números del CSV usan punto decimal independientemente de la configuración 
 
 Se ejecuta con ventana iniciada en modo oculto. Esto puede influir en la planificación gráfica y no representa interacción continua. No mide VRAM real, latencia de entrada, primera presentación, rendimiento de lotes ni respuesta durante desplazamiento.
 
+## Navegación por fotografías reales
+
+La característica de desarrollo capture también permite un recorrido automático dentro de la aplicación nativa. No se incluye en la compilación normal. Crea una carpeta nueva de fotografías públicas CC0 con cuatro originales JPEG de 4,3–12 MP y 144 copias físicas sin recodificar. Los autores, licencias, dimensiones, enlaces y SHA-256 están en photo-corpus.json. Las copias permiten superar las 128 entradas de la caché de texturas; no representan 144 fotografías diferentes. El preparador no reemplaza directorios existentes ni reintenta bloqueos de descarga.
+
+    python scripts/prepare-photo-corpus.py C:\Fotos\Rastera-Pruebas
+    cargo build -p rastera-desktop --release --features capture --locked
+    .\scripts\measure-navigation.ps1 -InputPath C:\Fotos\Rastera-Pruebas\Navegacion-144 -OutputDirectory work/measurements/navigation -Runs 5
+
+El recorrido avanza por índices 0, 20, 40… y el último; después vuelve hasta el primero y abre las seis primeras imágenes en el visor ajustado. Cada paso espera a que las miniaturas del intervalo virtualizado, incluidas sus filas de margen, o la vista previa del visor estén disponibles. Un error de imagen o un paso que supere 30 segundos invalida la ejecución. Con 144 archivos son 23 pasos. No hay un lote concurrente ni zoom a resolución completa en este escenario.
+
+Cada repetición fría inicia otro proceso y datos de prueba nuevos. Una preparación completa, excluida de los resúmenes, llena la caché persistente para las cinco repeticiones calientes. Las texturas GPU se crean de nuevo en cada proceso; el regreso dentro de cada recorrido reutiliza las que sigan residentes. Se preservan los directorios de prueba. No se toca el catálogo personal ni se purga la caché del sistema operativo.
+
+El CSV de cada recorrido registra tiempos hasta disponibilidad en la UI, llamadas a App::ui, sus duraciones media y máxima, reservas internas, número de entradas de miniaturas y diferencias de contadores de caché por paso. ready_ms del primer paso comienza al construir la aplicación, antes de leer la carpeta; los demás comienzan justo antes de cambiar la escena. Estos tiempos no son primera presentación, latencia de teclado/ratón ni FPS: la UI entrega texturas al renderizador antes de su presentación. ui_mean_ms y ui_max_ms excluyen el trabajo posterior del renderizador y del bucle de eventos.
+
+process.csv registra duración observada del proceso, último tiempo de CPU muestreado, máximo de working set observado del SO y máximo privado muestreado cada 100 ms. Los picos breves y el último intervalo de CPU pueden escapar al muestreo. metadata.json identifica commit, cambios locales, SHA-256 del ejecutable y configuración. Se inicia la ventana en modo oculto; no se debe interpretar este banco como interacción manual ni como una comparación con otros visores.
+
 ## Registrar una comparación
 
 Anota fecha, commit, cambios sin confirmar, build y características, toolchain, CPU, GPU/controlador, RAM, SO, corpus y estado de caché. Usa al menos cinco repeticiones y publica mediana y rango, conservando los CSV originales. No deduzcas p95 de cinco observaciones ni compares cifras obtenidas con diferentes corpus o escenarios.
