@@ -18,6 +18,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, AtomicUsize, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 const MAGIC: &[u8; 8] = b"RASTH002";
@@ -31,11 +32,19 @@ pub struct CachedThumbnails {
     source: Arc<dyn ImageBackend>,
     budget: u64,
     requests: AtomicUsize,
+    maintenance_runs: AtomicU64,
+    maintenance_ns: AtomicU64,
+    maintenance_files: AtomicU64,
+    evicted_files: AtomicU64,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct ThumbnailCacheStats {
     pub hits: u64,
     pub misses: u64,
+    pub maintenance_runs: u64,
+    pub maintenance_elapsed: Duration,
+    pub maintenance_files: u64,
+    pub evicted_files: u64,
 }
 impl Default for CachedThumbnails {
     fn default() -> Self {
@@ -55,12 +64,20 @@ impl CachedThumbnails {
             source: Arc::new(LocalImages),
             budget: DISK_BUDGET,
             requests: AtomicUsize::new(0),
+            maintenance_runs: AtomicU64::new(0),
+            maintenance_ns: AtomicU64::new(0),
+            maintenance_files: AtomicU64::new(0),
+            evicted_files: AtomicU64::new(0),
         }
     }
     pub fn stats(&self) -> ThumbnailCacheStats {
         ThumbnailCacheStats {
             hits: self.hits.load(Ordering::Relaxed),
             misses: self.misses.load(Ordering::Relaxed),
+            maintenance_runs: self.maintenance_runs.load(Ordering::Relaxed),
+            maintenance_elapsed: Duration::from_nanos(self.maintenance_ns.load(Ordering::Relaxed)),
+            maintenance_files: self.maintenance_files.load(Ordering::Relaxed),
+            evicted_files: self.evicted_files.load(Ordering::Relaxed),
         }
     }
     fn key(path: &Path, info: &ImageInfo, edge: u32) -> Vec<u8> {
@@ -141,6 +158,15 @@ impl CachedThumbnails {
         Ok(())
     }
     fn sweep(&self, root: &Path) {
+        let started = Instant::now();
+        self.maintenance_runs.fetch_add(1, Ordering::Relaxed);
+        self.sweep_files(root);
+        self.maintenance_ns.fetch_add(
+            started.elapsed().as_nanos().min(u64::MAX as u128) as u64,
+            Ordering::Relaxed,
+        );
+    }
+    fn sweep_files(&self, root: &Path) {
         let Ok(entries) = fs::read_dir(root) else {
             return;
         };
@@ -164,6 +190,7 @@ impl CachedThumbnails {
                 continue;
             }
             total = total.saturating_add(meta.len());
+            self.maintenance_files.fetch_add(1, Ordering::Relaxed);
             files.push((meta.modified().ok(), meta.len(), path));
         }
         files.sort_unstable_by_key(|a| a.0);
@@ -172,6 +199,7 @@ impl CachedThumbnails {
                 break;
             }
             if fs::remove_file(path).is_ok() {
+                self.evicted_files.fetch_add(1, Ordering::Relaxed);
                 total = total.saturating_sub(size);
             }
         }

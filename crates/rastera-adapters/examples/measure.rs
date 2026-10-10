@@ -56,7 +56,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut csv = BufWriter::new(File::create_new(&output)?);
     writeln!(
         csv,
-        "run,phase,files,source_bytes,first_page_ms,scan_ms,elapsed_ms,reserved_peak_bytes,reserved_after_bytes,cache_hits,cache_misses"
+        "run,phase,files,source_bytes,first_page_ms,scan_ms,elapsed_ms,reserved_peak_bytes,reserved_after_bytes,cache_hits,cache_misses,maintenance_runs,maintenance_ms,maintenance_files,evicted_files"
     )?;
     for run in 1..=repetitions {
         let scan = Instant::now();
@@ -96,7 +96,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let after = cache.stats();
             writeln!(
                 csv,
-                "{run},{phase},{},{},{:.3},{:.3},{:.3},{},{},{},{}",
+                "{run},{phase},{},{},{:.3},{:.3},{:.3},{},{},{},{},{},{:.3},{},{}",
                 paths.len(),
                 bytes,
                 first_page.unwrap_or_default().as_secs_f64() * 1000.0,
@@ -105,7 +105,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 budget.peak(),
                 budget.used(),
                 after.hits - before.hits,
-                after.misses - before.misses
+                after.misses - before.misses,
+                after.maintenance_runs - before.maintenance_runs,
+                (after.maintenance_elapsed - before.maintenance_elapsed).as_secs_f64() * 1000.0,
+                after.maintenance_files - before.maintenance_files,
+                after.evicted_files - before.evicted_files
             )?;
         }
         // Measure preview and complete decoding of one input separately.
@@ -125,7 +129,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             drop(loader);
             writeln!(
                 csv,
-                "{run},{phase},1,{},0,0,{:.3},{},{},0,0",
+                "{run},{phase},1,{},0,0,{:.3},{},{},0,0,0,0,0,0",
                 fs::metadata(&paths[0])?.len(),
                 elapsed.as_secs_f64() * 1000.0,
                 budget.peak(),

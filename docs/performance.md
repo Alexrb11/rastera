@@ -8,6 +8,8 @@ Las reservas estiman buffers y entrega, no toda la RAM. Los tamaños GPU excluye
 
 ## Banco del procesamiento
 
+El CSV y el panel incluyen recorridos de mantenimiento, tiempo acumulado dentro de ellos, entradas propias examinadas y eliminaciones. En el CSV son diferencias por fase: maintenance_runs, maintenance_ms, maintenance_files y evicted_files. Permiten separar la enumeración y limpieza de la caché del tiempo total del trabajador; no equivalen a un perfil completo de CPU.
+
 El ejemplo measure usa los adaptadores y trabajadores reales, con colas y reservas. Genera un corpus sintético en una carpeta nueva y guarda un CSV nuevo, sin reemplazar archivos. En cada repetición mide el escaneo, el procesamiento secuencial de todas las miniaturas con caché fría y caliente, y la vista previa y resolución completa de la primera imagen.
 
     New-Item -ItemType Directory -Force work/measurements

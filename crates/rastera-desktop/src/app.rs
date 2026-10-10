@@ -1242,6 +1242,7 @@ impl eframe::App for RasteraApp {
                         stats.completed, stats.failed, stats.cancelled, stats.last_elapsed.as_secs_f64()*1000.0));
                 }
                 ui.label(format!("Caché en disco: {} aciertos · {} decodificaciones solicitadas",cache.hits,cache.misses));
+                ui.label(format!("Mantenimiento de caché: {} recorridos · {:.2} ms acumulados · {} entradas examinadas · {} eliminadas",cache.maintenance_runs,cache.maintenance_elapsed.as_secs_f64()*1000.0,cache.maintenance_files,cache.evicted_files));
                 ui.label("Los tiempos incluyen inspección, espera de memoria y procesamiento, hasta encolar el resultado. Los contadores abarcan esta sesión.");
             });
         }
