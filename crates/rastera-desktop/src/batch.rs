@@ -280,7 +280,9 @@ impl Batch {
             self.edge = 1000;
             self.acknowledged = true;
         }
-        self.prepare();
+        if std::env::var("RASTERA_CAPTURE_TUTORIAL").as_deref() != Ok("configure") {
+            self.prepare();
+        }
     }
     #[cfg(feature = "capture")]
     pub fn capture_recovery(&mut self, journal: PathBuf) {
@@ -319,7 +321,18 @@ impl Batch {
                 }
                 ui.add_space(8.0);
                 let mut changed = false;
-                ui.add_enabled_ui(!self.busy && self.dialog.is_none(), |ui| {
+                ui.label(egui::RichText::new(format!("{} · {} · {}",
+                    match self.recipe.format {
+                        ExportFormat::Jpeg => format!("JPEG · Calidad {}", self.recipe.jpeg_quality),
+                        ExportFormat::Png => "PNG".to_owned(),
+                        ExportFormat::WebP => "WebP sin pérdidas".to_owned(),
+                    },
+                    if self.resize { format!("Lado mayor {} px", self.edge) } else { "Tamaño original".to_owned() },
+                    if self.recipe.rotation == 0 { "Sin rotación".to_owned() } else { format!("Rotación {}°", self.recipe.rotation) }
+                )).small().color(theme::MUTED));
+                ui.add_enabled_ui(!self.busy && self.dialog.is_none() && self.results.is_empty(), |ui| {
+                    egui::CollapsingHeader::new("Opciones de exportación")
+                        .id_salt(("export-settings", step)).default_open(step == 1).show(ui, |ui| {
                     theme::eyebrow(ui, "DESTINO DE LAS COPIAS");
                     ui.horizontal(|ui| {
                         let width = (ui.available_width() - 155.0).max(100.0);
@@ -350,7 +363,11 @@ impl Batch {
                         ui.label(egui::RichText::new("Sin ampliar · Mantiene proporción").small().color(theme::MUTED));
                     });
                     if self.recipe.format == ExportFormat::Jpeg {
-                        changed |= ui.add(egui::Slider::new(&mut self.recipe.jpeg_quality, 1..=100).text("Calidad JPEG")).changed();
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("Calidad JPEG");
+                            changed |= ui.add(egui::DragValue::new(&mut self.recipe.jpeg_quality).range(1..=100)).changed();
+                            ui.label(egui::RichText::new("Mayor calidad genera archivos más grandes").small().color(theme::MUTED));
+                        });
                         ui.horizontal(|ui| {
                             ui.label("Fondo para transparencias");
                             changed |= ui.color_edit_button_srgb(&mut self.recipe.jpeg_background).changed();
@@ -361,12 +378,17 @@ impl Batch {
                         ui.label("Se normaliza la orientación EXIF y se convierte a sRGB de 8 bits. Las copias eliminan los metadatos originales, incluidos EXIF, GPS y XMP.");
                         ui.label("Se admiten ICC RGB de matriz/curvas. Sin ICC se asume sRGB; HDR y otros perfiles se rechazan.");
                     });
-                    ui.label(egui::RichText::new("Las copias se orientan y convierten a sRGB. No conservan los metadatos originales.").small().color(theme::MUTED));
-                    ui.checkbox(&mut self.acknowledged, "Acepto la conversión de color y eliminación de metadatos");
+
                     if changed {
                         self.plan = None; self.results.clear(); self.completed = 0; self.journal = None; self.recovery = None;
                     }
                     ui.add_space(4.0);
+                    });
+                    if self.results.is_empty() {
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new("Las copias se orientan y convierten a sRGB. No conservan los metadatos originales.").small().color(theme::MUTED));
+                        ui.checkbox(&mut self.acknowledged, "Acepto la conversión de color y eliminación de metadatos");
+                    }
                 });
                 if let Some(report) = &self.recovery {
                     ui.separator();
@@ -386,20 +408,28 @@ impl Batch {
                     theme::eyebrow(ui, if self.results.is_empty() { "REVISA LAS SALIDAS" } else { "RESULTADO POR IMAGEN" });
                     ui.label(egui::RichText::new(format!("{} {} · {}", plan.items.len(), if plan.items.len() == 1 { "copia" } else { "copias" },
                         plan.items.first().and_then(|item| item.destination.parent())
-                            .map_or_else(String::new, |path| path.display().to_string()))).small().color(theme::MUTED));
+                            .map_or_else(String::new, theme::display_path))).small().color(theme::MUTED));
                     egui::ScrollArea::vertical().id_salt("batch-plan").max_height(160.0).auto_shrink([false, true])
                         .show_rows(ui, 26.0, plan.items.len(), |ui, rows| {
                             for index in rows {
                                 let item = &plan.items[index];
                                 let status = self.results.get(index).and_then(Option::as_ref);
                                 let name = item.destination.file_name().unwrap_or_default().to_string_lossy();
-                                let (text, color) = match status {
-                                    Some(Ok(())) => (format!("{name} · Publicada"), theme::ACCENT),
-                                    Some(Err(error)) => (format!("{name} · {error}"), egui::Color32::LIGHT_RED),
-                                    None => (format!("{name} · {} × {} px", item.output_size.0, item.output_size.1), theme::TEXT),
+                                let (state, color) = match status {
+                                    Some(Ok(())) => ("Publicada".to_owned(), egui::Color32::from_rgb(149, 207, 166)),
+                                    Some(Err(_)) => ("Sin publicar".to_owned(), egui::Color32::LIGHT_RED),
+                                    None => (format!("{} × {} px", item.output_size.0, item.output_size.1), theme::MUTED),
                                 };
-                                ui.add(egui::Label::new(egui::RichText::new(&text).color(color)).truncate())
-                                    .on_hover_text(format!("{text}\n{} → {}", item.source.display(), item.destination.display()));
+                                ui.horizontal(|ui| {
+                                    let width = (ui.available_width() - 130.0).max(80.0);
+                                    ui.allocate_ui_with_layout(egui::vec2(width, 22.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                        ui.set_min_width(width);
+                                        ui.add(egui::Label::new(name.as_ref()).truncate())
+                                    }).inner
+                                        .on_hover_text(format!("{} → {}", theme::display_path(&item.source), theme::display_path(&item.destination)));
+                                    let response = ui.label(egui::RichText::new(state).small().color(color));
+                                    if let Some(Err(error)) = status { response.on_hover_text(error); }
+                                });
                             }
                         });
                     ui.add_space(8.0);
@@ -415,7 +445,8 @@ impl Batch {
                     let published = self.results.iter().filter(|result| matches!(result, Some(Ok(())))).count();
                     let failed = self.results.iter().filter(|result| matches!(result, Some(Err(_)))).count();
                     ui.add(egui::ProgressBar::new(self.completed as f32 / self.results.len() as f32)
-                        .fill(theme::ACCENT).text(format!("{} / {} procesadas", self.completed, self.results.len())));
+                        .fill(theme::ACCENT).desired_height(6.0).corner_radius(2));
+                    ui.label(egui::RichText::new(format!("{} / {} procesadas", self.completed, self.results.len())).small().color(theme::MUTED));
                     ui.label(format!("{published} publicadas · {failed} sin publicar{}",
                         if self.cancelled { " · Lote cancelado" } else if !self.busy { " · Finalizado" } else { "" }));
                     if !self.busy && ui.button("Preparar otro lote con estas imágenes").clicked() {
@@ -429,8 +460,8 @@ impl Batch {
                 }
                 if let Some(path) = &self.journal {
                     egui::CollapsingHeader::new("Registro de la exportación").show(ui, |ui| {
-                        ui.add(egui::Label::new(path.to_string_lossy()).wrap());
-                        if ui.button("Copiar ruta del registro").clicked() { ctx.copy_text(path.to_string_lossy().into_owned()); }
+                        ui.add(egui::Label::new(theme::display_path(path)).wrap());
+                        if ui.button("Copiar ruta del registro").clicked() { ctx.copy_text(theme::display_path(path)); }
                     });
                 }
                 #[cfg(feature = "capture")]
