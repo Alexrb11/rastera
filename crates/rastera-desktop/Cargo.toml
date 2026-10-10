@@ -1,0 +1,18 @@
+[package]
+name = "rastera-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "rastera"
+path = "src/main.rs"
+
+[dependencies]
+rastera-core.workspace = true
+rastera-engine.workspace = true
+rastera-adapters.workspace = true
+
+[lints]
+workspace = true
+

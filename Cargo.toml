@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/rastera-core", "crates/rastera-engine", "crates/rastera-adapters", "crates/rastera-desktop"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+
+[workspace.dependencies]
+rastera-core = { path = "crates/rastera-core" }
+rastera-engine = { path = "crates/rastera-engine" }
+rastera-adapters = { path = "crates/rastera-adapters" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
