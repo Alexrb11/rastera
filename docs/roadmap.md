@@ -2,7 +2,7 @@
 
 Este plan lleva la arquitectura desde el prototipo hasta una primera aplicación útil en Windows. Las fases se completan mediante criterios observables, no por una fecha estimada.
 
-El avance inicial incluye workspace, CI, visor nativo, navegación progresiva por carpetas, cuadrícula virtualizada y selección múltiple. Las miniaturas tienen una caché LRU acotada y un trabajador cancelable que comparte memoria con el visor. Se ha comprobado el renderizado en Windows. Las fases siguen abiertas: faltan validación de accesibilidad, carga de resolución completa en el visor, mediciones con bibliotecas grandes, observación de cambios externos y lotes. El catálogo local ya guarda favoritos, etiquetas y dimensiones, con búsqueda y filtros en la carpeta abierta.
+El avance inicial incluye workspace, CI, visor nativo, navegación progresiva por carpetas, cuadrícula virtualizada y selección múltiple. Las miniaturas tienen una caché LRU acotada y un trabajador cancelable que comparte memoria con el visor. Se ha comprobado el renderizado en Windows. Las fases siguen abiertas: faltan validación de accesibilidad, carga de resolución completa en el visor, mediciones con bibliotecas grandes, observación de cambios externos y recuperación automática de lotes. El catálogo local ya guarda favoritos, etiquetas y dimensiones, con búsqueda y filtros en la carpeta abierta.
 
 ## Fase 1 Base técnica y visor
 
@@ -43,6 +43,8 @@ Criterios de aceptación:
 - Un fallo del catálogo permite abrir una carpeta en modo básico y ofrece recuperación.
 
 ## Fase 4 Exportación por lotes
+
+Implementado: recetas PNG/JPEG/WebP, orientación y rotación, redimensionado desde el original, plan de nombres/dimensiones, progreso, errores por archivo, cancelación y diario persistente. Hay pruebas de colisiones, color no compatible, resolución completa y publicación seguida de fallo del diario. Pendiente: recuperación automática tras interrupción, reanudación, validación en otros volúmenes y mediciones durante lotes grandes.
 
 Implementar recetas de redimensionado, rotación y conversión. Añadir previsualización del plan, progreso por ítem, cancelación y diario de recuperación. Las salidas se escriben en una carpeta distinta y sin sobrescribir originales.
 

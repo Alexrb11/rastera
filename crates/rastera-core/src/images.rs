@@ -21,6 +21,9 @@ pub enum ErrorKind {
     Changed,
     Busy,
     Internal,
+    /// The output exists, but its durable journal acknowledgment failed.
+    Published,
+    Journal,
 }
 
 #[derive(Clone, Debug)]

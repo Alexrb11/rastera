@@ -7,3 +7,5 @@ mod folders;
 pub use folders::LocalFolders;
 mod catalog;
 pub use catalog::{SqliteCatalog, catalog_path};
+mod batch;
+pub use batch::LocalBatch;

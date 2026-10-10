@@ -13,28 +13,28 @@ use rastera_core::{
 #[derive(Default)]
 pub struct LocalImages;
 
-fn io_error(error: std::io::Error) -> RasteraError {
+pub(crate) fn io_error(error: std::io::Error) -> RasteraError {
     RasteraError::new(
         ErrorKind::Io,
         format!("No se pudo acceder al archivo: {error}"),
     )
 }
 
-fn image_error(error: image::ImageError) -> RasteraError {
+pub(crate) fn image_error(error: image::ImageError) -> RasteraError {
     RasteraError::new(
         ErrorKind::InvalidImage,
         format!("No se pudo leer la imagen: {error}"),
     )
 }
 
-fn stamp(metadata: fs::Metadata) -> FileStamp {
+pub(crate) fn stamp(metadata: fs::Metadata) -> FileStamp {
     FileStamp {
         length: metadata.len(),
         modified: metadata.modified().ok(),
     }
 }
 
-fn decoder(path: &Path) -> Result<(ImageInfo, Box<dyn ImageDecoder>)> {
+pub(crate) fn decoder(path: &Path) -> Result<(ImageInfo, Box<dyn ImageDecoder>)> {
     let file = File::open(path).map_err(io_error)?;
     let version = stamp(file.metadata().map_err(io_error)?);
     if version.length > 128 * 1024 * 1024 {
@@ -43,14 +43,20 @@ fn decoder(path: &Path) -> Result<(ImageInfo, Box<dyn ImageDecoder>)> {
             "El archivo supera el límite de entrada de 128 MiB",
         ));
     }
-    let reader = ImageReader::new(BufReader::new(file))
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(64_000);
+    limits.max_image_height = Some(64_000);
+    limits.max_alloc = Some(256 * 1024 * 1024);
+    let mut reader = ImageReader::new(BufReader::new(file))
         .with_guessed_format()
         .map_err(io_error)?;
+    reader.limits(limits.clone());
     let format = reader.format();
     let mut decoder: Box<dyn ImageDecoder> = match format {
         Some(ImageFormat::Png) => {
             let decoder =
-                image::codecs::png::PngDecoder::new(reader.into_inner()).map_err(image_error)?;
+                image::codecs::png::PngDecoder::with_limits(reader.into_inner(), limits.clone())
+                    .map_err(image_error)?;
             if decoder.is_apng().map_err(image_error)? {
                 return Err(RasteraError::new(
                     ErrorKind::Unsupported,
@@ -91,10 +97,6 @@ fn decoder(path: &Path) -> Result<(ImageInfo, Box<dyn ImageDecoder>)> {
         has_color_profile: decoder.icc_profile().map_err(image_error)?.is_some(),
     };
     info.pixels()?;
-    let mut limits = Limits::default();
-    limits.max_image_width = Some(64_000);
-    limits.max_image_height = Some(64_000);
-    limits.max_alloc = Some(256 * 1024 * 1024);
     decoder.set_limits(limits).map_err(image_error)?;
     Ok((info, decoder))
 }

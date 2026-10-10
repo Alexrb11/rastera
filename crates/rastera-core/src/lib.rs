@@ -10,3 +10,5 @@ mod folders;
 pub use folders::*;
 mod catalog;
 pub use catalog::*;
+mod batch;
+pub use batch::*;

@@ -2,7 +2,7 @@
 
 Visor y organizador de imágenes con herramientas por lotes, desarrollado en Rust.
 
-Rastera tendrá una interfaz de escritorio nativa y trabajará sobre carpetas locales. El objetivo es navegar por bibliotecas grandes con una interfaz fluida, controlar el uso de memoria y procesar imágenes sin bloquear la navegación.
+Rastera tiene una interfaz de escritorio nativa y trabaja sobre carpetas locales. El objetivo es navegar por bibliotecas grandes con una interfaz fluida, controlar el uso de memoria y procesar imágenes sin bloquear la navegación.
 
 ## Estado del proyecto
 
@@ -10,31 +10,32 @@ El primer visor está implementado: abre JPEG, PNG y WebP estáticos mediante di
 
 La cuadrícula dibuja únicamente las filas visibles, carga miniaturas de 256 píxeles y ofrece selección múltiple con Ctrl+clic, selección de toda la carpeta y apertura con doble clic. El botón Actualizar vuelve a leer la carpeta e invalida las miniaturas. Su caché LRU mantiene como máximo 128 texturas (32 MiB de píxeles en GPU), además de la vista previa. El visor tiene preferencia al solicitar buffers; los trabajadores comparten el presupuesto de memoria. La caché todavía no se guarda en disco.
 
-El catálogo SQLite guarda favoritos, etiquetas y dimensiones de las imágenes abiertas. La cuadrícula permite buscar por nombre o etiqueta y filtrar por favoritos y formato. Las operaciones por lotes están pendientes. No hay una comparación de rendimiento publicada.
+El catálogo SQLite guarda favoritos, etiquetas y dimensiones de las imágenes abiertas. La cuadrícula permite buscar por nombre o etiqueta y filtrar por favoritos y formato. Los lotes convierten a PNG, JPEG o WebP sin pérdidas, redimensionan sin ampliar y rotan en pasos de 90 grados. Incluyen revisión del plan, progreso, cancelación y diario SQLite por lote. Exportan desde los originales a otra carpeta y publican sin reemplazar archivos existentes. No hay una comparación de rendimiento publicada.
 
 También se pueden abrir carpetas mediante diálogo, ruta, arrastre o argumento de inicio. La lectura emite páginas progresivamente y la lista dibuja únicamente las filas visibles. Las flechas permiten pasar al archivo anterior o siguiente. El alcance inicial es una carpeta sin recursión, con un límite de 10.000 archivos y 16 MiB de rutas; los enlaces se excluyen. La lista se ordena por ruta al terminar el escaneo. Una extensión compatible no garantiza que su contenido sea una imagen válida.
 
 Windows será la primera plataforma de desarrollo. La separación entre interfaz, lógica y adaptadores permitirá incorporar Linux y macOS después de comprobar su integración y distribución.
 
-## Funciones previstas
+## Funciones
 
 - Navegación por carpetas con cuadrícula de miniaturas, selección y ordenación.
 - Visor con zoom, desplazamiento, ajuste a ventana y navegación con teclado.
 - Catálogo local con favoritos, etiquetas y búsqueda por nombre y metadatos básicos.
 - Conversión, redimensionado y rotación de imágenes por lotes.
-- Vista previa del lote, progreso, cancelación y resultados por archivo.
+- Revisión de nombres y dimensiones del lote, progreso, cancelación y resultados por archivo.
 - Renombrado por lotes en una fase posterior, con registro de operaciones y recuperación.
 
 El primer alcance cubrirá JPEG, PNG y WebP estáticos. La compatibilidad se comprobará mediante archivos de prueba; otros formatos y la gestión avanzada de color se incorporarán por separado.
 
 ## Base técnica
 
-La arquitectura prevista es un workspace de Cargo con cuatro componentes: escritorio, dominio, motor de aplicación y adaptadores. La interfaz usará `egui/eframe`, el catálogo SQLite y el procesamiento se ejecutará en trabajadores con colas y memoria limitadas.
+La arquitectura es un workspace de Cargo con cuatro componentes: escritorio, dominio, motor de aplicación y adaptadores. La interfaz usa `egui/eframe`, el catálogo SQLite y el procesamiento se ejecuta en trabajadores con colas y memoria limitadas.
 
 El diseño favorece la carga progresiva y la reutilización de recursos. Usar Rust no constituye, por sí mismo, una garantía de menor consumo que otras aplicaciones.
 
 ## Documentación
 
+- [Guía de uso](docs/usage.md): selección, organización y exportación.
 - [Arquitectura](docs/architecture.md): módulos, dependencias, concurrencia, catálogo, cachés y operaciones sobre archivos.
 - [Plan de desarrollo](docs/roadmap.md): entregas y criterios de aceptación.
 

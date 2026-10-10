@@ -1,5 +1,19 @@
 # Arquitectura de Rastera
 
+Las secciones de implementación actual describen el código disponible. El resto del documento mantiene el diseño objetivo y puede incluir capacidades todavía pendientes.
+
+## Implementación actual de los lotes y la memoria
+
+El motor tiene un trabajador de visor, uno de miniaturas y uno de exportación, además de los trabajadores de escaneo y catálogo. No hay todavía un pool central adaptativo. Las colas de resultados de imágenes admiten un elemento y retienen su reserva hasta entregarlo a la UI; el progreso del lote admite cuatro eventos.
+
+Los tres trabajadores de imágenes comparten 512 MiB de reservas. El visor y las miniaturas estiman 16 bytes por píxel de entrada; la exportación estima 32. Cuando la memoria está ocupada, los trabajadores esperan con cancelación fuera del hilo gráfico. El lote da preferencia al visor entre archivos. No se interrumpe una llamada de códec en curso. Las estimaciones no representan la memoria total del proceso.
+
+El plan de exportación valida entradas, orientación, dimensiones finales, nombres equivalentes y colisiones. La ejecución trabaja sobre el original, aplica EXIF una vez, rota, reduce sin ampliar y convierte. Admite SDR de 8 bits sin ICC, asume sRGB y rechaza declaraciones PNG de color no compatibles. La interfaz exige aceptar la eliminación de metadatos y muestra fondo/calidad JPEG.
+
+Cada lote mantiene un diario SQLite independiente en el destino con intención, temporales y estados pending, encoding, ready, published, error y cancelled. Las salidas se sincronizan y se publican sin reemplazo mediante tempfile::persist_noclobber. Las colisiones que aparecen después del plan también fallan sin sobrescribir. Los errores individuales continúan; un error del diario detiene el lote. Una publicación cuya confirmación falla se comunica como publicada y pendiente de revisión.
+
+La recuperación automática, los hashes de identidad, la reanudación y las mediciones de rendimiento siguen pendientes. Tamaño y fecha de modificación detectan cambios habituales, sin demostrar igualdad de contenido. No se promete atomicidad del lote ni persistencia ante una pérdida de alimentación.
+
 ## Implementación actual del catálogo
 
 SQLite se abre y utiliza exclusivamente en un trabajador con colas de 32 mensajes. El cierre drena las escrituras aceptadas. Se guarda en el directorio de datos de usuario: en Windows, %LOCALAPPDATA%\Rastera\catalog.sqlite. Las claves de ruta usan UTF-16 sin pérdida en Windows y bytes en Unix; el texto visible no identifica los archivos.

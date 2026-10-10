@@ -70,7 +70,11 @@ impl ImageLoader {
                     request.cancel.check()?;
                     let info = backend.inspect(&request.path)?;
                     request.cancel.check()?;
-                    let mut lease = worker_budget.reserve(info.working_bytes()?)?;
+                    let mut lease = worker_budget.reserve_wait(
+                        info.working_bytes()?,
+                        &request.cancel,
+                        false,
+                    )?;
                     let decoded =
                         backend.decode(&request.path, &info, request.max_edge, &request.cancel)?;
                     request.cancel.check()?;

@@ -1,9 +1,9 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use rastera_core::{ErrorKind, RasteraError, Result};
+use rastera_core::{CancellationToken, ErrorKind, RasteraError, Result};
 
 #[derive(Clone)]
 pub struct MemoryBudget(Arc<Budget>);
@@ -11,6 +11,7 @@ pub struct MemoryBudget(Arc<Budget>);
 struct Budget {
     limit: u64,
     used: AtomicU64,
+    foreground_loading: AtomicBool,
 }
 
 impl MemoryBudget {
@@ -18,11 +19,36 @@ impl MemoryBudget {
         Self(Arc::new(Budget {
             limit,
             used: AtomicU64::new(0),
+            foreground_loading: AtomicBool::new(false),
         }))
     }
 
     pub fn used(&self) -> u64 {
         self.0.used.load(Ordering::Acquire)
+    }
+
+    pub fn set_foreground_loading(&self, loading: bool) {
+        self.0.foreground_loading.store(loading, Ordering::Release);
+    }
+
+    pub fn reserve_wait(
+        &self,
+        bytes: u64,
+        cancel: &CancellationToken,
+        background: bool,
+    ) -> Result<MemoryLease> {
+        if bytes > self.0.limit {
+            return self.reserve(bytes);
+        }
+        loop {
+            cancel.check()?;
+            if (!background || !self.0.foreground_loading.load(Ordering::Acquire))
+                && let Ok(lease) = self.reserve(bytes)
+            {
+                return Ok(lease);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
 
     pub fn reserve(&self, bytes: u64) -> Result<MemoryLease> {
@@ -106,6 +132,39 @@ mod tests {
                 });
             }
         });
+        assert_eq!(budget.used(), 0);
+    }
+
+    #[test]
+    fn waiting_for_memory_or_foreground_is_cancellable() {
+        let budget = MemoryBudget::new(10);
+        let lease = budget.reserve(10).unwrap();
+        let cancel = CancellationToken::default();
+        cancel.cancel();
+        assert_eq!(
+            budget.reserve_wait(1, &cancel, false).err().unwrap().kind,
+            ErrorKind::Cancelled
+        );
+        drop(lease);
+        budget.set_foreground_loading(true);
+        assert_eq!(
+            budget.reserve_wait(1, &cancel, true).err().unwrap().kind,
+            ErrorKind::Cancelled
+        );
+        assert_eq!(
+            budget
+                .reserve_wait(11, &CancellationToken::default(), false)
+                .err()
+                .unwrap()
+                .kind,
+            ErrorKind::TooLarge
+        );
+        budget.set_foreground_loading(false);
+        drop(
+            budget
+                .reserve_wait(10, &CancellationToken::default(), true)
+                .unwrap(),
+        );
         assert_eq!(budget.used(), 0);
     }
 }

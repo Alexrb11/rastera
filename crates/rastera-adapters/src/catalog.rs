@@ -14,7 +14,7 @@ fn db_error(error: rusqlite::Error) -> RasteraError {
 
 // Lossless path keys; display text is never used as file identity.
 #[cfg(windows)]
-fn path_key(path: &Path) -> Vec<u8> {
+pub(crate) fn path_key(path: &Path) -> Vec<u8> {
     use std::os::windows::ffi::OsStrExt;
     path.as_os_str()
         .encode_wide()
@@ -22,7 +22,7 @@ fn path_key(path: &Path) -> Vec<u8> {
         .collect()
 }
 #[cfg(not(windows))]
-fn path_key(path: &Path) -> Vec<u8> {
+pub(crate) fn path_key(path: &Path) -> Vec<u8> {
     use std::os::unix::ffi::OsStrExt;
     path.as_os_str().as_bytes().to_vec()
 }

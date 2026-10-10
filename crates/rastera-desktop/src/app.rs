@@ -16,6 +16,8 @@ struct Preview {
 }
 
 pub struct RasteraApp {
+    batch: crate::batch::Batch,
+    budget: MemoryBudget,
     catalog: crate::catalog::Catalog,
     metadata_dirty: bool,
     grid: crate::grid::ThumbnailGrid,
@@ -49,7 +51,7 @@ impl RasteraApp {
         let grid = crate::grid::ThumbnailGrid::new(&cc.egui_ctx, budget.clone());
         let loader = ImageLoader::new(
             Arc::new(LocalImages),
-            budget,
+            budget.clone(),
             Arc::new(move || ctx.request_repaint()),
         );
         let ctx = cc.egui_ctx.clone();
@@ -58,6 +60,8 @@ impl RasteraApp {
             Arc::new(move || ctx.request_repaint()),
         );
         let mut app = Self {
+            batch: crate::batch::Batch::new(&cc.egui_ctx, budget.clone()),
+            budget,
             catalog: crate::catalog::Catalog::new(&cc.egui_ctx),
             metadata_dirty: false,
             grid,
@@ -97,6 +101,7 @@ impl RasteraApp {
         self.metadata_dirty = false;
         self.generation += 1;
         self.loader.cancel();
+        self.budget.set_foreground_loading(false);
         self.preview = None;
         self.path = None;
         self.path_input = path.to_string_lossy().into_owned();
@@ -110,6 +115,7 @@ impl RasteraApp {
     }
 
     fn open_image(&mut self, path: PathBuf) {
+        self.budget.set_foreground_loading(true);
         self.generation += 1;
         self.path_input = path.to_string_lossy().into_owned();
         self.path = Some(path.clone());
@@ -149,6 +155,7 @@ impl RasteraApp {
     }
 
     fn receive(&mut self, ctx: &egui::Context) {
+        self.batch.receive();
         self.catalog.receive();
         self.grid.receive(ctx);
         if let Some(receiver) = &self.dialog {
@@ -192,6 +199,18 @@ impl RasteraApp {
                     self.entries = entries;
                 }
                 FolderUpdate::Finished(result) => {
+                    #[cfg(feature = "capture")]
+                    if std::env::var_os("RASTERA_CAPTURE_PANEL").is_some()
+                        && let Some(destination) = std::env::var_os("RASTERA_CAPTURE_DEST")
+                    {
+                        self.batch.capture_plan(
+                            self.entries
+                                .iter()
+                                .map(|entry| entry.path.clone())
+                                .collect(),
+                            PathBuf::from(destination),
+                        );
+                    }
                     let paths = if self.entries.is_empty() {
                         self.path.iter().cloned().collect()
                     } else {
@@ -218,6 +237,7 @@ impl RasteraApp {
                 continue;
             }
             self.loading = false;
+            self.budget.set_foreground_loading(false);
             match event.result {
                 Ok(image) => {
                     self.metadata_dirty = true;
@@ -340,6 +360,7 @@ impl RasteraApp {
             && !self.loading
             && !self.folder_loading
             && !self.grid.busy()
+            && !self.batch.busy
         {
             self.capture_requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
@@ -351,7 +372,9 @@ impl RasteraApp {
             ui.add_space(12.0);
             ui.label(RichText::new("RASTERA").size(24.0).strong().color(ACCENT));
             ui.add_space(16.0);
-            ui.label(RichText::new("Tus imágenes, a tu ritmo").color(MUTED));
+            if ui.available_width() > 900.0 {
+                ui.label(RichText::new("Tus imágenes, a tu ritmo").color(MUTED));
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(12.0);
                 if ui.button("Abrir imagen · Ctrl+O").clicked() {
@@ -369,18 +392,20 @@ impl RasteraApp {
                         self.open(folder);
                     }
                 }
-                if self.folder.is_none()
-                    && ui
-                        .add_enabled(self.catalog.ready, egui::Button::new("Organizar"))
-                        .clicked()
-                {
-                    self.catalog.editor_open = true;
-                }
             });
         });
         ui.add_space(6.0);
         ui.separator();
         ui.horizontal(|ui| {
+            if ui
+                .add_enabled(
+                    self.catalog.ready && self.path.is_some(),
+                    egui::Button::new("Organizar imagen"),
+                )
+                .clicked()
+            {
+                self.catalog.editor_open = true;
+            }
             ui.add_space(12.0);
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.path_input)
@@ -394,6 +419,33 @@ impl RasteraApp {
             }
         });
         ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui
+                .button(if self.batch.busy {
+                    "Ver lote en curso"
+                } else {
+                    "Herramientas por lotes"
+                })
+                .clicked()
+            {
+                let paths = if self.grid.selected.is_empty() {
+                    self.path.iter().cloned().collect()
+                } else {
+                    self.grid.selected.iter().cloned().collect()
+                };
+                self.batch.select(paths);
+            }
+            ui.label(format!(
+                "Buffers reservados: {:.1} MiB",
+                self.budget.used() as f64 / 1_048_576.0
+            ));
+            if !self.grid.selected.is_empty() {
+                ui.label(format!(
+                    "{} seleccionadas para exportar",
+                    self.grid.selected.len()
+                ));
+            }
+        });
     }
 
     fn inspector(&mut self, ui: &mut egui::Ui) {
@@ -667,6 +719,7 @@ impl eframe::App for RasteraApp {
             self.path.as_deref(),
             self.preview.as_ref().map(|preview| &preview.info),
         );
+        self.batch.show(&ctx);
         if let Some(error) = &self.catalog.error {
             ui.colored_label(Color32::LIGHT_RED, error);
         }
