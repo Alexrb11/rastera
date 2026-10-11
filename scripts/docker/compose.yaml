@@ -76,6 +76,36 @@ services:
         source: ${RASTERA_REPORTS_DIR}/debian12
         target: /reports
 
+  ubuntu2204-wayland:
+    extends:
+      service: ubuntu2204
+    environment:
+      RASTERA_DISPLAY_BACKEND: wayland
+    volumes:
+      - type: bind
+        source: ${RASTERA_REPORTS_DIR}/ubuntu2204-wayland
+        target: /reports
+
+  ubuntu2404-wayland:
+    extends:
+      service: ubuntu2404
+    environment:
+      RASTERA_DISPLAY_BACKEND: wayland
+    volumes:
+      - type: bind
+        source: ${RASTERA_REPORTS_DIR}/ubuntu2404-wayland
+        target: /reports
+
+  debian12-wayland:
+    extends:
+      service: debian12
+    environment:
+      RASTERA_DISPLAY_BACKEND: wayland
+    volumes:
+      - type: bind
+        source: ${RASTERA_REPORTS_DIR}/debian12-wayland
+        target: /reports
+
   desktop:
     <<: *runtime
     profiles: [desktop]
@@ -109,5 +139,40 @@ services:
       retries: 12
       start_period: 15s
 
+  desktop-wayland:
+    <<: *runtime
+    profiles: [desktop]
+    image: rastera-test-ubuntu2404:local
+    build: *ubuntu2404-build
+    network_mode: bridge
+    environment:
+      <<: *environment
+      RASTERA_MODE: desktop
+      RASTERA_DISPLAY_BACKEND: wayland
+    ports:
+      - "127.0.0.1:6081:6080"
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace/scripts
+        read_only: true
+      - type: bind
+        source: ${RASTERA_PACKAGE_DIR}
+        target: /release
+        read_only: true
+      - type: bind
+        source: ${RASTERA_REPORTS_DIR}/desktop-wayland
+        target: /reports
+      - type: volume
+        source: desktop-wayland-home
+        target: /home/tester
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6080/vnc.html',timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 15s
+
 volumes:
   desktop-home:
+  desktop-wayland-home:

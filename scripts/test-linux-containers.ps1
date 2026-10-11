@@ -4,6 +4,7 @@ param(
     [ValidateCount(1, 3)][ValidateSet('ubuntu2204', 'ubuntu2404', 'debian12')]
     [string[]]$Service = @('ubuntu2204', 'ubuntu2404', 'debian12'),
     [ValidatePattern('^$|^[a-f0-9]{40}$')][string]$ExpectedCommit = '',
+    [ValidateSet('x11', 'wayland')][string]$DisplayBackend = 'x11',
     [switch]$Desktop
 )
 $ErrorActionPreference = 'Stop'
@@ -21,7 +22,8 @@ if ($taskExpected -cne "$taskHash  $taskName") { throw 'The archive does not mat
 if (!$ReportsDirectory) { $ReportsDirectory = Join-Path $taskRepo 'work/linux-containers' }
 $taskReports = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ReportsDirectory)
 New-Item -ItemType Directory -Path $taskReports -Force | Out-Null
-foreach ($taskFolder in @('ubuntu2204', 'ubuntu2404', 'debian12', 'desktop')) {
+foreach ($taskFolder in @('ubuntu2204', 'ubuntu2404', 'debian12', 'desktop',
+    'ubuntu2204-wayland', 'ubuntu2404-wayland', 'debian12-wayland', 'desktop-wayland')) {
     New-Item -ItemType Directory -Path (Join-Path $taskReports $taskFolder) -Force | Out-Null
 }
 function Invoke-RasteraDocker {
@@ -42,17 +44,21 @@ try {
     $taskBase = @('compose', '-f', $taskCompose)
     Invoke-RasteraDocker -Arguments ($taskBase + @('config', '--quiet'))
     if ($Desktop) {
-        Invoke-RasteraDocker -Arguments ($taskBase + @('--profile', 'desktop', 'up', '-d', '--build', '--wait', 'desktop'))
-        Write-Output 'Linux desktop: http://127.0.0.1:6080/vnc.html?autoconnect=true&resize=scale'
+        $taskDesktopService = if ($DisplayBackend -eq 'wayland') { 'desktop-wayland' } else { 'desktop' }
+        $taskDesktopPort = if ($DisplayBackend -eq 'wayland') { 6081 } else { 6080 }
+        Invoke-RasteraDocker -Arguments ($taskBase + @('--profile', 'desktop', 'up', '-d', '--build', '--wait', $taskDesktopService))
+        Write-Output "Linux $DisplayBackend desktop: http://127.0.0.1:$taskDesktopPort/vnc.html?autoconnect=true&resize=scale"
         Write-Output "Reports: $taskReports"
     } else {
-        Invoke-RasteraDocker -Arguments ($taskBase + @('build') + $Service)
+        $taskServices = @($Service | ForEach-Object { if ($DisplayBackend -eq 'wayland') { "$_-wayland" } else { $_ } })
+        Invoke-RasteraDocker -Arguments ($taskBase + @('build') + $taskServices)
         $taskFailures = @()
-        foreach ($taskService in $Service) {
-            $taskImageID = & docker image inspect "rastera-test-${taskService}:local" --format '{{.Id}}'
+        foreach ($taskService in $taskServices) {
+            $taskBaseService = $taskService -replace '-wayland$', ''
+            $taskImageID = & docker image inspect "rastera-test-${taskBaseService}:local" --format '{{.Id}}'
             if ($LASTEXITCODE -ne 0) { throw 'The built image could not be inspected.' }
             @{
-                service = $taskService; image_id = $taskImageID.Trim(); archive = $taskName
+                service = $taskService; display_backend = $DisplayBackend; image_id = $taskImageID.Trim(); archive = $taskName
                 archive_sha256 = $taskHash; expected_commit = $ExpectedCommit
                 compose_sha256 = (Get-FileHash -LiteralPath $taskCompose -Algorithm SHA256).Hash.ToLowerInvariant()
             } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskReports "$taskService/image.json") -Encoding UTF8

@@ -3,7 +3,7 @@
 This is an integration driver, not a Rust build. SQLite annotation and previous
 installation seeds are explicitly fixtures; they do not prove UI editing or an
 upgrade from a previously executed binary. Only the driver-owned app processes
-are terminated. The supplied X server, D-Bus session and graphics stack remain
+are terminated. The supplied display server, D-Bus session and graphics stack remain
 under the container entrypoint's control.
 """
 import argparse
@@ -62,6 +62,60 @@ def command(arguments, environment, log_path, timeout=60, should_fail=False):
     return result.returncode
 
 
+def display_backend(env):
+    backend = env.get("RASTERA_DISPLAY_BACKEND", "x11")
+    require(backend in {"x11", "wayland"}, "RASTERA_DISPLAY_BACKEND must be x11 or wayland")
+    return backend
+
+
+def validate_display(env):
+    backend = display_backend(env)
+    if backend == "x11":
+        require(bool(env.get("DISPLAY")), "X11 GUI checks require the entrypoint's active X display")
+        require(not env.get("WAYLAND_DISPLAY") and not env.get("WAYLAND_SOCKET"),
+                "X11 checks must not expose a Wayland display or inherited connection")
+        return None
+    require("DISPLAY" not in env, "Native Wayland checks require DISPLAY to be unset; X11 fallback is forbidden")
+    require(not env.get("WAYLAND_SOCKET"), "Wayland checks must connect to the named compositor socket")
+    runtime = Path(env.get("XDG_RUNTIME_DIR", ""))
+    require(runtime.is_absolute() and runtime.is_dir() and not runtime.is_symlink(),
+            "Wayland checks require the compositor's absolute XDG_RUNTIME_DIR")
+    require(runtime.stat().st_uid == os.geteuid() and stat.S_IMODE(runtime.stat().st_mode) == 0o700,
+            "The compositor runtime directory must belong to this user and have mode 0700")
+    name = env.get("WAYLAND_DISPLAY", "")
+    require(bool(name), "Wayland checks require WAYLAND_DISPLAY")
+    socket = Path(name) if Path(name).is_absolute() else runtime / name
+    require(socket.is_socket(), "The supplied WAYLAND_DISPLAY is not a live Unix socket: " + str(socket))
+    return socket
+
+
+def wayland_protocol(log_path):
+    """Require native window requests, not just advertised interface names.
+
+    Both wayland-backend's Rust debug output and libwayland's client trace use
+    interface@id.method (newer libwayland also uses interface#id.method).
+    """
+    quoted_id = re.escape(json.dumps(APP_ID))
+    requests = {
+        "display_registry": r"\bwl_display[@#]\d+\.get_registry\s*\(",
+        "registry_globals": r"\bwl_registry[@#]\d+\.global\s*,?\s*\(",
+        "create_surface": r"\bwl_compositor[@#]\d+\.create_surface\s*\(",
+        "xdg_surface": r"\bxdg_wm_base[@#]\d+\.get_xdg_surface\s*\(",
+        "xdg_toplevel": r"\bxdg_surface[@#]\d+\.get_toplevel\s*\(",
+        "application_id": r"\bxdg_toplevel[@#]\d+\.set_app_id\s*\(\s*(?:"
+                          + quoted_id + r"|Some\(\s*" + quoted_id + r"\s*\))\s*\)",
+        "surface_commit": r"\bwl_surface[@#]\d+\.commit\s*\(",
+    }
+    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    evidence = {name: next((line for line in lines if re.search(pattern, line)), None)
+                for name, pattern in requests.items()}
+    missing = [name for name, line in evidence.items() if line is None]
+    require(not missing, "The Rastera client log lacks native Wayland protocol evidence: " + ", ".join(missing))
+    return {"log": log_path.name, "log_sha256": digest(log_path),
+            "observed_messages": evidence, "application_id": APP_ID,
+            "x11_fallback_available": False}
+
+
 def profile(root):
     """Use a HOME containing spaces to exercise installed launcher quoting."""
     env = dict(os.environ)
@@ -74,8 +128,13 @@ def profile(root):
         "XDG_DATA_HOME": home / ".local/share",
         "XDG_CACHE_HOME": home / ".cache",
         "XDG_CONFIG_HOME": home / ".config",
-        "XDG_RUNTIME_DIR": root / "runtime",
     }
+    if display_backend(env) == "wayland":
+        # The compositor's socket is relative to this runtime directory. HOME,
+        # catalog, cache and config remain disposable; the socket must be shared.
+        validate_display(env)
+    else:
+        paths["XDG_RUNTIME_DIR"] = root / "runtime"
     for key, path in paths.items():
         path.mkdir(parents=True, mode=0o700)
         path.chmod(0o700)
@@ -101,11 +160,18 @@ def read_image(catalog, sample):
 
 
 def gui_run(executable, pictures, env, log_path, timeout):
+    socket = validate_display(env)
+    backend = display_backend(env)
+    client_env = dict(env)
+    if backend == "wayland":
+        client_env["WAYLAND_DEBUG"] = "client"
+    else:
+        client_env.pop("WAYLAND_DEBUG", None)
     sample = sorted(pictures.glob("*.jpg"))[0]
     catalog = catalog_path(env)
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [str(executable), str(pictures)], env=env, cwd=pictures,
+            [str(executable), str(pictures)], env=client_env, cwd=pictures,
             stdout=log, stderr=subprocess.STDOUT,
         )
         try:
@@ -121,11 +187,10 @@ def gui_run(executable, pictures, env, log_path, timeout):
                 if image and image["width"] and image["height"] and image["format"]:
                     time.sleep(2)
                     require(process.poll() is None, "The GUI exited immediately after sample decode")
-                    return {"selected_sample": sample.name, "decoded_image": image,
-                            "catalog_created": True,
-                            "close_method": "driver terminates its own process; graceful close untested"}
+                    break
                 time.sleep(0.2)
-            raise ValueError("No decoded metadata for the selected copied JPEG within " + str(timeout) + " seconds")
+            else:
+                raise ValueError("No decoded metadata for the selected copied JPEG within " + str(timeout) + " seconds")
         finally:
             if process.poll() is None:
                 process.terminate()
@@ -134,6 +199,13 @@ def gui_run(executable, pictures, env, log_path, timeout):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=5)
+    detail = {"selected_sample": sample.name, "decoded_image": image,
+              "catalog_created": True, "display_backend": backend,
+              "close_method": "driver terminates its own process; graceful close untested"}
+    if backend == "wayland":
+        detail["wayland_socket"] = str(socket)
+        detail["wayland_protocol"] = wayland_protocol(log_path)
+    return detail
 
 
 def seed_annotation(catalog, sample):
@@ -226,13 +298,15 @@ def exercise(args, report):
     require(os.geteuid() != 0, "Run as the unprivileged container tester, not root")
     require(not shutil.which("cargo") and not shutil.which("rustc"),
             "The runtime container must not include Rust/Cargo on PATH")
-    if args.gui:
-        require(bool(os.environ.get("DISPLAY")), "--gui requires the entrypoint's active X display")
+    backend = display_backend(os.environ)
+    socket = validate_display(os.environ) if args.gui else None
     report["environment"] = {
         "platform": platform.platform(), "machine": platform.machine(),
         "python": platform.python_version(), "uid": os.geteuid(),
         "os_release": Path("/etc/os-release").read_text() if Path("/etc/os-release").is_file() else None,
         "rust_on_path": False, "display": os.environ.get("DISPLAY"),
+        "display_backend": backend, "wayland_display": os.environ.get("WAYLAND_DISPLAY"),
+        "wayland_socket": str(socket) if socket else None,
         "dbus_session_available": bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS")),
     }
     record(report, "runtime_container", non_root=True, rust_required=False)
@@ -366,7 +440,7 @@ def main():
         "expected_source_commit": args.expected_commit, "gui_requested": args.gui, "checks": [],
         "remaining_validation": [
             "UI favorite/tag editing, folder watcher changes and batch tools require separate interaction tests",
-            "Real desktop hardware GPU/Wayland, file dialogs, accessibility and graceful app close",
+            "Real desktop compositors and hardware GPU, file dialogs, accessibility and graceful app close",
             "A real older binary upgrade; this driver uses a declared previous-installation fixture",
             "Docker shares the host kernel; this does not validate a different Linux kernel or macOS",
         ],

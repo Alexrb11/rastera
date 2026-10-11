@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwayland-client0 libegl1 libgl1 \
     dbus dbus-x11 xdg-utils xdg-desktop-portal xdg-desktop-portal-gtk zenity \
     xvfb x11-utils xdotool openbox x11vnc novnc websockify imagemagick \
+    weston libegl-mesa0 \
     fonts-dejavu-core fonts-liberation \
+    && if apt-cache show wayland-utils > /dev/null 2>&1; then \
+       apt-get install -y --no-install-recommends wayland-utils; fi \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /bin/bash tester \
     && mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix

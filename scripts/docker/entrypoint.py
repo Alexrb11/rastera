@@ -1,4 +1,4 @@
-"""Run native Linux checks or an interactive X11 desktop with the normal release."""
+"""Run native Linux checks or an interactive X11/Wayland desktop with the release."""
 import argparse
 import contextlib
 import datetime
@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tarfile
@@ -19,6 +20,7 @@ import time
 
 SCRIPTS = Path("/workspace/scripts")
 REPORTS = Path("/reports")
+WAYLAND_SOCKET = "rastera-wayland"
 
 
 def now():
@@ -62,14 +64,14 @@ def save_environment(report):
         temporary.unlink(missing_ok=True)
 
 
-def desktop_environment():
+def desktop_environment(backend):
     env = dict(os.environ)
     env.setdefault("HOME", "/home/tester")
-    env.setdefault("DISPLAY", ":99")
     env.setdefault("XDG_RUNTIME_DIR", "/tmp/rastera-runtime")
     env.setdefault("XDG_DATA_HOME", str(Path(env["HOME"]) / ".local/share"))
     env.setdefault("XDG_CACHE_HOME", str(Path(env["HOME"]) / ".cache"))
     env.setdefault("XDG_CONFIG_HOME", str(Path(env["HOME"]) / ".config"))
+    env.setdefault("XDG_CURRENT_DESKTOP", "GNOME")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     for key in ("HOME", "XDG_RUNTIME_DIR", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME"):
         path = Path(env[key])
@@ -88,6 +90,21 @@ def desktop_environment():
     for key in list(env):
         if key.startswith("RASTERA_CAPTURE_") or key == "RASTERA_NAVIGATION_BENCHMARK":
             env.pop(key)
+    env["RASTERA_DISPLAY_BACKEND"] = backend
+    env["XDG_SESSION_TYPE"] = backend
+    env["GDK_BACKEND"] = backend
+    env["WINIT_UNIX_BACKEND"] = backend
+    # Never inherit another compositor's socket or an X11 fallback in Wayland mode.
+    env.pop("WAYLAND_SOCKET", None)
+    if backend == "wayland":
+        env.pop("DISPLAY", None)
+        env.pop("XAUTHORITY", None)
+        env["WAYLAND_DISPLAY"] = WAYLAND_SOCKET
+        env["WAYLAND_DEBUG"] = "client"
+    else:
+        env.setdefault("DISPLAY", ":99")
+        env.pop("WAYLAND_DISPLAY", None)
+        env.pop("WAYLAND_DEBUG", None)
     return env
 
 
@@ -102,14 +119,15 @@ class Runtime:
         self.stopping = True
         self.exit_code = 128 + number
 
-    def start(self, name, command, cwd=None):
+    def start(self, name, command, cwd=None, env=None):
         if self.stopping:
             raise InterruptedError("Container shutdown requested")
         log = (REPORTS / (name + ".log")).open("a", encoding="utf-8")
         log.write("\n[" + now() + "] Starting " + name + "\n")
         log.flush()
         try:
-            process = subprocess.Popen(command, cwd=cwd, env=self.env, stdout=log,
+            process = subprocess.Popen(command, cwd=cwd, env=env if env is not None else self.env,
+                                       stdout=log,
                                        stderr=subprocess.STDOUT, start_new_session=True)
         except BaseException:
             log.close()
@@ -150,25 +168,114 @@ class Runtime:
             log.close()
 
 
-def start_display(runtime):
-    display = runtime.env["DISPLAY"]
+def start_x11_display(runtime, env):
+    display = env["DISPLAY"]
     if not re.fullmatch(r":\d+", display):
         raise ValueError("DISPLAY must identify a local X server, such as :99")
     server = runtime.start("xvfb", ["Xvfb", display, "-screen", "0", "1440x1000x24",
-                                    "-nolisten", "tcp", "-s", "0"])
+                                    "-nolisten", "tcp", "-s", "0"], env=env)
     deadline = time.monotonic() + 15
     while not runtime.stopping and time.monotonic() < deadline:
         runtime.check_services((("xvfb", server),))
         try:
-            probe = subprocess.run(["xdpyinfo", "-display", display], env=runtime.env,
+            probe = subprocess.run(["xdpyinfo", "-display", display], env=env,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
             if probe.returncode == 0:
-                window_manager = runtime.start("openbox", ["openbox", "--sm-disable"])
+                window_manager = runtime.start("openbox", ["openbox", "--sm-disable"], env=env)
                 return (("xvfb", server), ("openbox", window_manager))
         except subprocess.TimeoutExpired:
             pass
         time.sleep(0.2)
     raise RuntimeError("Xvfb did not become ready; see /reports/xvfb.log")
+
+
+def compositor_environment(runtime, nested=False):
+    env = dict(runtime.env)
+    for key in ("WAYLAND_DISPLAY", "WAYLAND_DEBUG", "WAYLAND_SOCKET", "WINIT_UNIX_BACKEND"):
+        env.pop(key, None)
+    if nested:
+        env["DISPLAY"] = os.environ.get("DISPLAY", ":99")
+        env["GDK_BACKEND"] = "x11"
+        env["XDG_SESSION_TYPE"] = "x11"
+    return env
+
+
+def weston_command(env, nested):
+    version = subprocess.run(["weston", "--version"], env=env, check=True,
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    help_text = subprocess.run(["weston", "--help"], env=env, check=True,
+                               capture_output=True, text=True, timeout=5).stdout
+    renderer = "--renderer=pixman" if "--renderer=NAME" in help_text else "--use-pixman"
+    if renderer == "--use-pixman" and "--use-pixman" not in help_text:
+        raise RuntimeError("Weston does not advertise a software pixman renderer")
+    backend = "x11" if nested else "headless"
+    # Weston 9/10 use module names; Weston 13 advertises short backend names.
+    backend_option = backend + "-backend.so" if backend + "-backend.so" in help_text else backend
+    command = ["weston", "--backend=" + backend_option, renderer,
+               "--socket=" + WAYLAND_SOCKET, "--width=1440", "--height=1000",
+               "--idle-time=0", "--no-config"]
+    if nested:
+        command.append("--fullscreen")
+    return command, version
+
+
+def start_wayland_display(runtime, mode, environment):
+    nested = mode == "desktop"
+    env = compositor_environment(runtime, nested)
+    services = start_x11_display(runtime, env) if nested else ()
+    command, version = weston_command(env, nested)
+    socket_path = Path(runtime.env["XDG_RUNTIME_DIR"]) / WAYLAND_SOCKET
+    if socket_path.exists() or socket_path.is_symlink():
+        raise RuntimeError("The test Wayland socket already exists: " + str(socket_path))
+    compositor = runtime.start("weston", command, env=env)
+    services += (("weston", compositor),)
+    diagnostic = shutil.which("wayland-info") or shutil.which("weston-info")
+    if not diagnostic:
+        raise FileNotFoundError("Install wayland-info or Weston's older weston-info diagnostic")
+    probe_env = dict(runtime.env)
+    probe_env.pop("WAYLAND_DEBUG", None)
+    deadline = time.monotonic() + 25
+    with (REPORTS / "wayland-readiness.log").open("a", encoding="utf-8") as log:
+        while not runtime.stopping and time.monotonic() < deadline:
+            runtime.check_services(services)
+            try:
+                socket_stat = socket_path.stat()
+                if not stat.S_ISSOCK(socket_stat.st_mode) or socket_stat.st_uid != os.getuid():
+                    raise RuntimeError("The test compositor must expose a user-owned Unix socket")
+                probe = subprocess.run([diagnostic], env=probe_env, stdout=log,
+                                       stderr=subprocess.STDOUT, timeout=3)
+                if probe.returncode == 0:
+                    break
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+            time.sleep(0.2)
+        else:
+            raise RuntimeError("Weston did not become ready; see /reports/weston.log "
+                               "and wayland-readiness.log")
+    if runtime.stopping:
+        raise InterruptedError("Container shutdown requested")
+    environment["compositor"] = {
+        "name": "Weston", "version": version, "backend": "x11-nested" if nested else "headless",
+        "renderer": "pixman (software)", "command": command, "wayland_socket": str(socket_path),
+        "readiness_probe": Path(diagnostic).name, "parent_display": env.get("DISPLAY"),
+        "xwayland_enabled": False,
+    }
+    # D-Bus-activated GTK/portal processes must use this compositor too. Empty X11
+    # values clear any DISPLAY inherited by dbus-run-session before this entrypoint.
+    activation = runtime.start("portal-environment", ["dbus-update-activation-environment",
+        "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE",
+        "GDK_BACKEND", "DISPLAY=", "XAUTHORITY="])
+    if runtime.wait(activation, services) != 0:
+        raise RuntimeError("Could not update the D-Bus activation environment for Wayland")
+    return services
+
+
+def start_display(runtime, mode, environment):
+    if runtime.env["RASTERA_DISPLAY_BACKEND"] == "wayland":
+        return start_wayland_display(runtime, mode, environment)
+    environment["compositor"] = {"name": "Openbox", "backend": "x11",
+                                 "parent_display": runtime.env["DISPLAY"]}
+    return start_x11_display(runtime, runtime.env)
 
 
 def verifier_module():
@@ -221,8 +328,10 @@ def run_desktop(runtime, archive, expected_commit, environment, services):
                             "export_folder": str(exports), "novnc_url": "http://localhost:6080/vnc.html"})
         save_environment(environment)
         app = runtime.start("rastera", [str(executable), str(practice)], cwd=package)
-        vnc = runtime.start("x11vnc", ["x11vnc", "-display", runtime.env["DISPLAY"], "-localhost",
-                                      "-rfbport", "5900", "-nopw", "-forever", "-shared"])
+        vnc_env = (compositor_environment(runtime, nested=True)
+                   if runtime.env["RASTERA_DISPLAY_BACKEND"] == "wayland" else runtime.env)
+        vnc = runtime.start("x11vnc", ["x11vnc", "-display", vnc_env["DISPLAY"], "-localhost",
+                                      "-rfbport", "5900", "-nopw", "-forever", "-shared"], env=vnc_env)
         websocket = runtime.start("websockify", ["websockify", "--web", "/usr/share/novnc",
                                                  "6080", "localhost:5900"])
         required = services + (("x11vnc", vnc), ("websockify", websocket))
@@ -244,9 +353,13 @@ def run_desktop(runtime, archive, expected_commit, environment, services):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("check", "desktop"), default=os.environ.get("RASTERA_MODE", "check"))
+    parser.add_argument("--display-backend", choices=("x11", "wayland"),
+                        default=os.environ.get("RASTERA_DISPLAY_BACKEND", "x11"))
     args = parser.parse_args()
     if args.mode not in ("check", "desktop"):
         parser.error("RASTERA_MODE must be check or desktop")
+    if args.display_backend not in ("x11", "wayland"):
+        parser.error("RASTERA_DISPLAY_BACKEND must be x11 or wayland")
     if not os.environ.get("RASTERA_ARCHIVE"):
         raise ValueError("Set RASTERA_ARCHIVE to the mounted Linux release archive")
     archive = Path(os.environ["RASTERA_ARCHIVE"]).resolve(strict=True)
@@ -254,27 +367,38 @@ def main():
     if expected_commit and not re.fullmatch(r"[a-f0-9]{40}", expected_commit):
         raise ValueError("RASTERA_EXPECTED_COMMIT must be a full lowercase Git SHA")
     info = archive_metadata(archive)
-    env = desktop_environment()
+    env = desktop_environment(args.display_backend)
+    if args.display_backend == "wayland":
+        session = "Wayland with nested X11 compositor" if args.mode == "desktop" else "headless Wayland"
+        scope = ("Container " + session + " and software Vulkan; clients configured without "
+                 "DISPLAY, Xwayland disabled. Hardware GPU, full desktop sessions and "
+                 "accessibility need separate validation")
+    else:
+        scope = ("Container X11 and software Vulkan; hardware GPU, Wayland, clean desktop "
+                 "and accessibility need separate validation")
     environment = {
         "started_utc": now(), "mode": args.mode, "archive": str(archive),
         "archive_sha256": sha256(archive), "source_commit": info["source_commit"],
         "expected_commit": expected_commit, "version": info.get("version"),
         "target": info["target"], "capture": info["capture"], "package_verified": False,
         "uid": os.getuid(), "gid": os.getgid(), "python": sys.version.split()[0],
-        "system": list(os.uname()), "display": env["DISPLAY"], "screen": "1440x1000x24",
+        "system": list(os.uname()), "display_backend": args.display_backend,
+        "display": env.get("DISPLAY"), "wayland_display": env.get("WAYLAND_DISPLAY"),
+        "wayland_debug": env.get("WAYLAND_DEBUG"), "screen": "1440x1000x24",
         "vulkan_driver": "Mesa lavapipe (software)", "vulkan_icd": env["VK_DRIVER_FILES"],
         "paths": {key: env[key] for key in ("HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
                                            "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR")},
         "catalog": str(Path(env["XDG_DATA_HOME"]) / "Rastera/catalog.sqlite"),
         "thumbnail_cache": str(Path(env["XDG_CACHE_HOME"]) / "Rastera/thumbnails-v1"),
-        "scope": "Container X11 and software Vulkan; hardware GPU, Wayland, clean desktop and accessibility need separate validation",
+        "scope": scope,
     }
     save_environment(environment)
     runtime = Runtime(env)
     for number in (signal.SIGTERM, signal.SIGINT):
         signal.signal(number, runtime.on_signal)
     try:
-        services = start_display(runtime)
+        services = start_display(runtime, args.mode, environment)
+        save_environment(environment)
         if args.mode == "desktop":
             code = run_desktop(runtime, archive, expected_commit, environment, services)
         else:
