@@ -1,3 +1,5 @@
+<img src="assets/branding/rastera.svg" alt="Rastera" width="96" height="96">
+
 # Rastera
 
 **English** | [Español](README.md)

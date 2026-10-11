@@ -1,5 +1,11 @@
 # Cambios
 
+## Sin publicar
+
+- Logo aprobado de Rastera vectorizado, con PNG transparentes e ICO de varias resoluciones.
+- Icono integrado en la ventana y los recursos del ejecutable Windows, para MSVC y GNU.
+- Logo en los README y el tutorial, con favicon y assets incluidos en futuros paquetes portables.
+
 ## 0.1.0-alpha.2 · 2026-10-11
 
 Primera alpha publicada. La alpha.1 se conserva como borrador de preparación.

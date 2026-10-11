@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Tutorial ilustrado de Rastera: elegir fotos, organizar con etiquetas y exportar copias por lotes.">
 <title>Rastera · Guía práctica con imágenes</title>
+<link rel="icon" type="image/png" sizes="32x32" href="../../assets/branding/rastera-32.png">
 <style>
 :root{color-scheme:light;--ink:#24272b;--muted:#62676e;--line:#dce0e4;--blue:#245b86;--paper:#fff;--soft:#f5f6f7}
 *{box-sizing:border-box}
@@ -15,7 +16,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,a:focus-visible{outline:3px solid #3877a6;outline-offset:4px}
 .top{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid var(--line)}
 .top-inner{max-width:1240px;margin:auto;padding:12px 28px;display:flex;align-items:center;gap:18px}
-.brand{font-size:19px;font-weight:650;letter-spacing:.02em;color:var(--ink);text-decoration:none}
+.brand{display:inline-flex;align-items:center;gap:9px;font-size:19px;font-weight:650;letter-spacing:.02em;color:var(--ink);text-decoration:none}
+.brand img{display:block;flex:none}
 .top-label{border-left:1px solid var(--line);padding-left:18px;color:var(--muted);font-size:14px}
 .print{margin-left:auto;padding:4px 12px;border:1px solid var(--line);background:white;border-radius:2px;font-size:13px}
 .layout{max-width:1240px;margin:auto;display:grid;grid-template-columns:214px minmax(0,1fr);gap:48px;padding:36px 28px 72px}
@@ -78,7 +80,7 @@ dialog img{display:block;width:100%;height:auto}
 </style>
 </head>
 <body>
-<header class="top"><div class="top-inner"><a href="#inicio" class="brand">Rastera</a><span class="top-label">Manual de uso · Tutorial ilustrado</span><button class="print" id="print" type="button">Imprimir / guardar PDF</button></div></header>
+<header class="top"><div class="top-inner"><a href="#inicio" class="brand"><img src="../../assets/branding/rastera.svg" alt="" width="28" height="28">Rastera</a><span class="top-label">Manual de uso · Tutorial ilustrado</span><button class="print" id="print" type="button">Imprimir / guardar PDF</button></div></header>
 <div class="layout">
 <nav aria-label="Índice del tutorial">
 <p>En esta guía</p>

@@ -42,6 +42,9 @@ def package(executable, metadata, target, output, commit, compiler, rust_notices
         (stage / "docs").mkdir()
         shutil.copyfile(REPO / "docs/usage.md", stage / "docs/usage.md")
         shutil.copytree(REPO / "docs/tutorial", stage / "docs/tutorial")
+        (stage / "assets/branding").mkdir(parents=True)
+        for file in ["rastera.svg", "rastera-32.png"]:
+            shutil.copyfile(REPO / "assets/branding" / file, stage / "assets/branding" / file)
         collect(metadata, stage)
         shutil.copyfile(rust_notices, stage / 'RUST-STANDARD-LIBRARY-NOTICES.html')
         if target.endswith('-gnu'):
