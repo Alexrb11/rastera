@@ -31,8 +31,13 @@ fn main() -> eframe::Result {
         });
     #[cfg(not(feature = "capture"))]
     let capture_size: Option<[f32; 2]> = None;
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!(
+        "../../../assets/branding/rastera-256.png"
+    ))
+    .expect("the embedded Rastera icon must be a valid PNG");
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
+            .with_icon(icon)
             .with_inner_size(capture_size.unwrap_or([1180.0, 780.0]))
             .with_min_inner_size([760.0, 480.0]),
         renderer: eframe::Renderer::Wgpu,
