@@ -2512,7 +2512,7 @@ checksum = "ca45419789ae5a7899559e9512e58ca889e41f04f1f2445e9f4b290ceccd1d08"
 
 [[package]]
 name = "rastera-adapters"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "blake3",
  "image",
@@ -2527,11 +2527,11 @@ dependencies = [
 
 [[package]]
 name = "rastera-core"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 
 [[package]]
 name = "rastera-desktop"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "crossbeam-channel",
  "eframe",
@@ -2545,7 +2545,7 @@ dependencies = [
 
 [[package]]
 name = "rastera-engine"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "crossbeam-channel",
  "rastera-core",

@@ -1,2 +1,2 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Upstream notices are verified byte-for-byte against their recorded SHA-256.
+licensing/upstream/** -text
