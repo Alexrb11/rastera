@@ -19,7 +19,7 @@ $taskExpected = (Get-Content -LiteralPath "$taskArchive.sha256" -Raw).Trim()
 $taskHash = (Get-FileHash -LiteralPath $taskArchive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($taskExpected -cne "$taskHash  $taskName") { throw 'The archive does not match its exact SHA-256 sidecar.' }
 if (!$ReportsDirectory) { $ReportsDirectory = Join-Path $taskRepo 'work/linux-containers' }
-$taskReports = [IO.Path]::GetFullPath($ReportsDirectory)
+$taskReports = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ReportsDirectory)
 New-Item -ItemType Directory -Path $taskReports -Force | Out-Null
 foreach ($taskFolder in @('ubuntu2204', 'ubuntu2404', 'debian12', 'desktop')) {
     New-Item -ItemType Directory -Path (Join-Path $taskReports $taskFolder) -Force | Out-Null
