@@ -2,6 +2,11 @@
 
 ## Sin publicar
 
+- Preparación de `0.1.0-alpha.3` con soporte experimental Linux x86-64, macOS Apple Silicon e Intel; alpha.2 sigue siendo la release pública de referencia.
+- Rutas de catálogo y caché compartidas por plataforma, respaldos XDG y compatibilidad con catálogos de builds macOS anteriores.
+- Atajos y ayudas con Cmd en macOS y Ctrl en Windows/Linux.
+- tar.gz Linux con launcher, iconos e instalador opcional por usuario, y ZIP macOS con `.app`, ICNS y firma ad-hoc; sin Developer ID, notarización ni asociaciones Finder.
+- Matriz de CI y empaquetado Windows/Linux/macOS, verificación de paquetes, dependencias, huellas y documentación de instalación. La validación manual de escritorio sigue pendiente.
 - Logo aprobado de Rastera vectorizado, con PNG transparentes e ICO de varias resoluciones.
 - Icono integrado en la ventana y los recursos del ejecutable Windows, para MSVC y GNU.
 - Logo en los README y el tutorial, con favicon y assets incluidos en futuros paquetes portables.

@@ -9,4 +9,4 @@ Icon=io.github.Alexrb11.rastera
 Terminal=false
 Categories=Graphics;Photography;Viewer;
 Keywords=Image;Photo;Organize;Batch;
-StartupNotify=true
+StartupNotify=false
