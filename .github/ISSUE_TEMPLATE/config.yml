@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Guía de uso y tutorial
+    url: https://github.com/Alexrb11/rastera/blob/main/docs/usage.md
+    about: Consulta el funcionamiento y las limitaciones de la alpha.
+  - name: Comunicar un problema de seguridad
+    url: https://github.com/Alexrb11/rastera/blob/main/SECURITY.md
+    about: Lee cómo solicitar un canal privado antes de publicar detalles.

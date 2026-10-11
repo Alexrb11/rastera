@@ -1,0 +1,36 @@
+name: Informar de un fallo
+description: Un comportamiento que puedes reproducir en Rastera.
+title: "[Fallo] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Versión de Rastera
+      placeholder: "0.1.0-alpha.1 · ZIP portable o compilación propia"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Sistema y gráficos
+      description: Versión de Windows, GPU y escalado de pantalla.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducirlo
+      description: Indica formato, dimensiones y número de imágenes si afecta a una carpeta o lote.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado y observado
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Capturas o mensaje de error
+      description: Oculta rutas personales y metadatos privados. Comparte solo archivos que tengas permiso para publicar.
