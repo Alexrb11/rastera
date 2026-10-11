@@ -491,11 +491,29 @@ impl Batch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn settle(batch: &mut Batch) {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    fn settle(batch: &mut Batch, operation: &str) {
+        // These integration tests use durable SQLite commits and file syncs on shared CI runners.
+        // Keep an absolute deadline so a stalled worker still fails, regardless of partial progress.
+        let started = std::time::Instant::now();
+        let deadline = started + std::time::Duration::from_secs(30);
         while batch.busy {
             batch.receive();
-            assert!(std::time::Instant::now() < deadline, "Batch timeout");
+            if !batch.busy {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Batch timeout during {operation} after {:?}: generation={}, completed={}, \
+                 planned_items={}, results={:?}, journal={:?}, cancelled={}, error={:?}",
+                started.elapsed(),
+                batch.generation,
+                batch.completed,
+                batch.plan.as_ref().map_or(0, |plan| plan.items.len()),
+                batch.results,
+                batch.journal,
+                batch.cancelled,
+                batch.error,
+            );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
@@ -515,7 +533,7 @@ mod tests {
         batch.destination = output.to_string_lossy().into_owned();
         batch.edge = 20;
         batch.prepare();
-        settle(&mut batch);
+        settle(&mut batch, "plan review");
         assert!(batch.error.is_none(), "{:?}", batch.error);
         assert_eq!(batch.plan.as_ref().unwrap().items[0].output_size, (20, 10));
         batch.execute();
@@ -523,7 +541,7 @@ mod tests {
         assert!(!output.join("image-rastera.png").exists());
         batch.acknowledged = true;
         batch.execute();
-        settle(&mut batch);
+        settle(&mut batch, "reviewed export");
         assert_eq!(batch.completed, 1);
         assert!(matches!(batch.results[0], Some(Ok(()))));
         assert!(batch.journal.as_ref().unwrap().exists());
@@ -561,7 +579,7 @@ mod tests {
             MemoryBudget::new(rastera_core::CPU_IMAGE_BUDGET),
         );
         batch.recover(journal.clone());
-        settle(&mut batch);
+        settle(&mut batch, "journal recovery");
         assert!(batch.error.is_none(), "{:?}", batch.error);
         assert_eq!(batch.recovery.as_ref().unwrap().pending.items.len(), 1);
         batch.execute();
@@ -569,7 +587,7 @@ mod tests {
         assert!(!plan.items[0].destination.exists());
         batch.acknowledged = true;
         batch.execute();
-        settle(&mut batch);
+        settle(&mut batch, "resumed export");
         assert_eq!(batch.completed, 1);
         assert_ne!(batch.journal.as_ref().unwrap(), &journal);
         assert!(plan.items[0].destination.exists());
