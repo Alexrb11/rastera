@@ -4,6 +4,12 @@ Visor y organizador de imágenes con herramientas por lotes, desarrollado en Rus
 
 Rastera tiene una interfaz de escritorio nativa y trabaja sobre carpetas locales. El objetivo es navegar por bibliotecas grandes con una interfaz fluida, controlar el uso de memoria y procesar imágenes sin bloquear la navegación.
 
+## Probarla en Windows
+
+La primera versión es `0.1.0-alpha.1`, una alpha para Windows 10/11 x64. Las alphas publicadas se encuentran en [Releases](https://github.com/Alexrb11/rastera/releases). Descarga el ZIP portable y su SHA-256, extráelo y abre `rastera.exe`; no necesitas Rust. Consulta la [instalación y límites](docs/install-windows.md) y el [tutorial ilustrado](docs/tutorial/index.html).
+
+El ejecutable no está firmado. La prueba en un Windows limpio y la validación completa de accesibilidad están pendientes. Linux y macOS todavía no tienen paquetes soportados. El catálogo y la caché se guardan fuera de la carpeta del ejecutable, en `%LOCALAPPDATA%\Rastera`.
+
 ## Estado del proyecto
 
 El primer visor está implementado: abre JPEG, PNG y WebP estáticos mediante diálogo, ruta, arrastre o argumento de inicio. Incluye zoom, desplazamiento, orientación EXIF, transparencia y detalles de la imagen. La carga se ejecuta en un trabajador con cancelación y presupuesto de memoria.
@@ -47,8 +53,13 @@ El diseño favorece la carga progresiva y la reutilización de recursos. Usar Ru
 - [Medir rendimiento](docs/performance.md): contadores, banco reproducible y medición del proceso.
 - [Resultados iniciales](docs/performance-results.md): equipo, escenarios, observaciones y límites de la comparación.
 - [Optimización de caché y navegación](docs/performance-cache-results.md): comparación antes/después y recorridos nativos con fotografías reales.
+- [Preparar una release](docs/releasing.md): paquete portable, comprobaciones y prueba en Windows limpio.
 
 La inspiración de producto es el enfoque de aplicaciones nativas y locales de [Artcraft](https://getartcraft.com/apps). Rastera tendrá su propio alcance y diseño.
+
+## Colaborar y licencia
+
+El código de Rastera usa [MIT](LICENSE). Dependencias y fuentes conservan sus propios términos, incluidos en cada ZIP y documentados en [licensing](licensing/README.md). Para colaborar consulta [CONTRIBUTING.md](CONTRIBUTING.md), el [código de conducta](CODE_OF_CONDUCT.md) y la [política de seguridad](SECURITY.md). Las incidencias reproducibles y las pruebas con diferentes equipos Windows son especialmente útiles durante la alpha.
 
 ## Desarrollo
 
