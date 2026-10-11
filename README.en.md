@@ -19,13 +19,15 @@ The Windows executable is unsigned. Testing on a clean Windows installation and 
 | Platform | Package prepared for alpha.3 | Status and requirements |
 | --- | --- | --- |
 | Windows 10/11 x64 | MSVC portable ZIP | Initial alpha platform; clean Windows, other GPUs and accessibility testing pending. [Guide](docs/install-windows.md). |
-| Linux x86-64 | tar.gz with optional per-user installer | Experimental: glibc ≥ 2.35, Vulkan, X11/Wayland and a file portal. Ubuntu/Debian container checks passed; native desktop/GPU testing remains pending. [Guide](docs/install-linux.md). |
+| Linux x86-64 | tar.gz with optional per-user installer | Experimental: glibc ≥ 2.35, Vulkan, X11/Wayland and a file portal. X11 and Weston Wayland container checks passed; full desktop sessions and physical GPU testing remain pending. [Guide](docs/install-linux.md). |
 | macOS Apple Silicon | ZIP containing arm64 `Rastera.app` | Experimental: declared minimum macOS 13; build matrix uses macOS 15. Ad-hoc signature, no Developer ID or notarization. [Guide](docs/install-macos.md). |
 | macOS Intel | ZIP containing x64 `Rastera.app` | Same limits; desktop and minimum macOS 13 testing pending. [Guide](docs/install-macos.md). |
 
 Linux uses XDG data and cache directories, falling back to locations under HOME. macOS uses `Library/Application Support/Rastera` and `Library/Caches/Rastera`; an existing catalog from an earlier source build may retain its old location. The guides describe paths and updates. The application interface and illustrated tutorial remain in Spanish.
 
-The alpha.3 Linux package passed all 11 runtime checks on each of Ubuntu 22.04, Ubuntu 24.04 and Debian 12 under Docker Desktop. Separate Ubuntu 24.04 X11 interaction confirmed the grid, favorite/tag editing and persistence after restart, search, viewer, automatic folder updates, JPEG batch export, refusal to overwrite outputs, the GTK file chooser and normal shutdown. These checks use software Vulkan on WSL2; they do not validate physical GPUs, Wayland or macOS. See [the container testing guide](docs/testing-linux-containers.md) for the exact archive revision, checks and remaining validation.
+The alpha.3 Linux artifact at revision `cf56c2e` passed 66 local checks and another 66 in GitHub Actions: 11 for each combination of Ubuntu 22.04, Ubuntu 24.04 and Debian 12 with X11 and Wayland. Each matrix verified nine launches of Rastera's native Wayland window, application identity, configuration and a buffer committed to its own surface, without `DISPLAY` or Xwayland. The tests use headless Weston and software Vulkan on WSL2 or the CI Linux environment; physical GPUs, full GNOME/KDE sessions, HiDPI, IME, accessibility and macOS still require validation.
+
+Manual X11 review of the original artifact confirmed organization, search, viewer, automatic folder changes, JPEG export with output protection, the GTK chooser and persistence after normal close and restart. The rebuilt package passed nine manual checks in Ubuntu 24.04's nested Wayland desktop, including PNG batch export, 100% zoom, folder changes and tags. After the Weston compositor failed with pixman, the desktop now uses GL with Mesa llvmpipe; normal Rastera shutdown and persistence after an actual container restart were confirmed. These are bounded observations, with steps before and after the renderer change documented separately. See [the container testing guide](docs/testing-linux-containers.md) for each artifact's checksum, `-DisplayBackend wayland` instructions and the exact scope of each result.
 
 ## Project status
 

@@ -1,6 +1,6 @@
 # Install Rastera on Linux
 
-Linux support is experimental in `0.1.0-alpha.3`. The planned package targets x86-64 Linux with glibc 2.35 or later, using Ubuntu 22.04 as the build baseline. Packaging and automated checks do not replace testing on a normal desktop. The published Windows alpha remains available while this release is prepared.
+Linux support is experimental in `0.1.0-alpha.3`. The prepared package targets x86-64 Linux with glibc 2.35 or later, using Ubuntu 22.04 as the build baseline. Packaging and container checks do not replace testing on a normal desktop. The published Windows alpha remains available while this release is prepared.
 
 ## Requirements
 
@@ -48,9 +48,11 @@ Replacing the application preserves these directories. Cache files are disposabl
 
 The scope remains one folder without recursion, up to 10,000 entries, with static 8-bit SDR JPEG, PNG and WebP. RAW, HEIC, animated images and monitor-profile conversion are unsupported. External renames do not transfer tags or favorites.
 
-The alpha.3 package passed all 11 runtime checks on Ubuntu 22.04, Ubuntu 24.04 and Debian 12 containers under Docker Desktop. Separate manual interaction on Ubuntu 24.04 confirmed the grid, favorite/tag editing and persistence after restart, search, viewer, automatic folder updates, JPEG export with existing-output refusal, the GTK portal file chooser and normal shutdown. See [the Linux container testing guide](testing-linux-containers.md) for the exact archive revision, results and fixture scope.
+The original alpha.3 artifact passed all 11 runtime checks on Ubuntu 22.04, Ubuntu 24.04 and Debian 12 containers under Docker Desktop. Separate manual interaction on Ubuntu 24.04 confirmed the grid, favorite/tag editing and persistence after restart, search, viewer, automatic folder updates, JPEG export with existing-output refusal, the GTK portal file chooser and normal shutdown. See [the Linux container testing guide](testing-linux-containers.md) for the exact archive revision, results and fixture scope.
 
-These results cover X11/Xvfb with Mesa software Vulkan on the WSL2 kernel. Physical GPU drivers, native Wayland, other desktop portal backends, scaling, accessibility and installations on independent Linux kernels still require testing. The containers do not validate macOS. A CI smoke test establishes only its recorded environment.
+The rebuilt alpha.3 artifact at source revision `cf56c2e` passed 66 local checks and 66 checks in the expanded GitHub Actions matrix across six X11/Wayland services on those same distributions. Each matrix included nine launches verifying Rastera's native Wayland application identity, matching configure acknowledgements and a buffer committed to its own surface, with `DISPLAY` absent and Xwayland disabled. A separate Ubuntu 24.04 review passed nine manual checks, including retained annotations, maximization/restoration, the GTK chooser, the viewer at 100%, a three-image PNG batch, folder changes, tag editing/search and normal close. Persistence was also confirmed after an actual container restart using the final GL/llvmpipe nested compositor. The guide records each archive's checksum and distinguishes checks performed before and after that compositor change.
+
+The automated Wayland tests use headless Weston with pixman. Interactive Wayland nests Weston 13 in Xvfb for browser viewing and uses GL with Mesa llvmpipe after a recorded pixman compositor SIGSEGV; its internal cause remains unknown. Rastera uses native Wayland and Mesa software Vulkan in both modes. Local containers share the WSL2 kernel, while CI supplies its own Linux runner environment. Physical GPU drivers, full GNOME/KDE sessions, other desktop portal backends, HiDPI, input methods (IME), accessibility and installations on independent distribution kernels still require testing. The containers do not validate macOS or long-term compositor stability.
 
 For a useful report, include version, archive checksum, distribution, glibc version, desktop, X11/Wayland, GPU/driver and reproducible steps. Use practice images you may share. Report security problems through [SECURITY.md](../SECURITY.md).
 
