@@ -1,0 +1,101 @@
+{
+  "source": "rastera.svg",
+  "renderer": "sharp 0.35.5",
+  "files": [
+    {
+      "file": "rastera.svg",
+      "sha256": "4c33b97ae68ce5fff62861d0663797fff480fdccd1b9165c7072354ce9c3147c"
+    },
+    {
+      "file": "rastera-16.png",
+      "width": 16,
+      "height": 16,
+      "sha256": "418546501952e51130cb5212aaf4c131c61a970dfd77e76d21dd33d6a869f9cc"
+    },
+    {
+      "file": "rastera-20.png",
+      "width": 20,
+      "height": 20,
+      "sha256": "23fae0dece6657326aac2a8965343f2b86f9e858eafbfd796852418b324596c5"
+    },
+    {
+      "file": "rastera-24.png",
+      "width": 24,
+      "height": 24,
+      "sha256": "8d9a8c034466670bf7f6c87ccccc730efc001f27431d3d0e99c692e8c65d3e1a"
+    },
+    {
+      "file": "rastera-32.png",
+      "width": 32,
+      "height": 32,
+      "sha256": "1adf47bb90c78b944b2a2e301aa01b538e506ca27e0cd679a674f2ca92c53cd6"
+    },
+    {
+      "file": "rastera-40.png",
+      "width": 40,
+      "height": 40,
+      "sha256": "86e399cfa381e3587e36a10383d23acd956de7748e3606bf7ef95b28ed5758ff"
+    },
+    {
+      "file": "rastera-48.png",
+      "width": 48,
+      "height": 48,
+      "sha256": "1bb3adcc2e24a212a7ef361824a55ccc6e1c98f87ba3d266395486b4e3287792"
+    },
+    {
+      "file": "rastera-64.png",
+      "width": 64,
+      "height": 64,
+      "sha256": "d7591b504a067f20053779aa0756f5d3ba1b28dd86352a033554d9f0c928345a"
+    },
+    {
+      "file": "rastera-96.png",
+      "width": 96,
+      "height": 96,
+      "sha256": "d37110519d95e0dce52d1a777deabeb3d131bb30ac09d76ab0c3ca372c87a411"
+    },
+    {
+      "file": "rastera-128.png",
+      "width": 128,
+      "height": 128,
+      "sha256": "a6aa614bceb894d4b6c24ecb4bb9be8557a40817ed635637b576b7e696f03ff0"
+    },
+    {
+      "file": "rastera-192.png",
+      "width": 192,
+      "height": 192,
+      "sha256": "a899c019e9a14c289aef42abb8e74acc01822b3fd366a77e25397057adce541d"
+    },
+    {
+      "file": "rastera-256.png",
+      "width": 256,
+      "height": 256,
+      "sha256": "5fc7d3c9f77a2108c11024fa08a35f8647f8cd1a308bfa4c6a8cd01044488794"
+    },
+    {
+      "file": "rastera-512.png",
+      "width": 512,
+      "height": 512,
+      "sha256": "76460b1c56ecd8b2399140eb4b15ebc2ba6659da010e48a0daaa655aa92acd50"
+    },
+    {
+      "file": "rastera-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "e390877131fa7457fded8015422661a2a186e4090ac2b02d3c7fc3bd59d14417"
+    },
+    {
+      "file": "rastera.ico",
+      "sizes": [
+        16,
+        24,
+        32,
+        48,
+        64,
+        128,
+        256
+      ],
+      "sha256": "6ba43c2a9e497f2ef1285c44beb0a2da4329e1ad2ccd9c6c1d26ac46dcad8ca6"
+    }
+  ]
+}
