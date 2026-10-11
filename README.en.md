@@ -19,11 +19,13 @@ The Windows executable is unsigned. Testing on a clean Windows installation and 
 | Platform | Package prepared for alpha.3 | Status and requirements |
 | --- | --- | --- |
 | Windows 10/11 x64 | MSVC portable ZIP | Initial alpha platform; clean Windows, other GPUs and accessibility testing pending. [Guide](docs/install-windows.md). |
-| Linux x86-64 | tar.gz with optional per-user installer | Experimental: glibc ≥ 2.35, Vulkan, X11/Wayland and a file portal. Desktop testing pending. [Guide](docs/install-linux.md). |
+| Linux x86-64 | tar.gz with optional per-user installer | Experimental: glibc ≥ 2.35, Vulkan, X11/Wayland and a file portal. Ubuntu/Debian container checks passed; native desktop/GPU testing remains pending. [Guide](docs/install-linux.md). |
 | macOS Apple Silicon | ZIP containing arm64 `Rastera.app` | Experimental: declared minimum macOS 13; build matrix uses macOS 15. Ad-hoc signature, no Developer ID or notarization. [Guide](docs/install-macos.md). |
 | macOS Intel | ZIP containing x64 `Rastera.app` | Same limits; desktop and minimum macOS 13 testing pending. [Guide](docs/install-macos.md). |
 
 Linux uses XDG data and cache directories, falling back to locations under HOME. macOS uses `Library/Application Support/Rastera` and `Library/Caches/Rastera`; an existing catalog from an earlier source build may retain its old location. The guides describe paths and updates. The application interface and illustrated tutorial remain in Spanish.
+
+The alpha.3 Linux package passed all 11 runtime checks on each of Ubuntu 22.04, Ubuntu 24.04 and Debian 12 under Docker Desktop. Separate Ubuntu 24.04 X11 interaction confirmed the grid, favorite/tag editing and persistence after restart, search, viewer, automatic folder updates, JPEG batch export, refusal to overwrite outputs, the GTK file chooser and normal shutdown. These checks use software Vulkan on WSL2; they do not validate physical GPUs, Wayland or macOS. See [the container testing guide](docs/testing-linux-containers.md) for the exact archive revision, checks and remaining validation.
 
 ## Project status
 
@@ -65,6 +67,7 @@ Most existing guides are in Spanish; the new Linux and macOS installation guides
 
 - [User guide](docs/usage.md): selection, organization, and export.
 - [Linux installation](docs/install-linux.md) and [macOS installation](docs/install-macos.md): requirements, experimental packages, local data and integration limits.
+- [Linux container testing](docs/testing-linux-containers.md): runtime-only Ubuntu/Debian checks with Docker Desktop, reports, and an optional browser desktop for manual review.
 - [Illustrated tutorial](docs/tutorial/index.html): step-by-step use cases, actual screenshots, and practice images. Open it in a browser; see [preparation and provenance](docs/tutorial/README.md).
 - [Architecture](docs/architecture.md): modules, dependencies, concurrency, catalog, caches, and file operations.
 - [Development plan](docs/roadmap.md): milestones and acceptance criteria.

@@ -1,0 +1,113 @@
+name: rastera-linux-tests
+
+x-runtime: &runtime
+  platform: linux/amd64
+  init: true
+  user: "10001:10001"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  network_mode: none
+  cpus: 2.0
+  mem_limit: 2g
+  pids_limit: 256
+  shm_size: 256m
+  environment: &environment
+    RASTERA_ARCHIVE: /release/${RASTERA_ARCHIVE_NAME:?Set the Linux archive filename}
+    RASTERA_EXPECTED_COMMIT: ${RASTERA_EXPECTED_COMMIT:-}
+
+services:
+  ubuntu2204:
+    <<: *runtime
+    image: rastera-test-ubuntu2204:local
+    build:
+      context: .
+      args:
+        BASE_IMAGE: ubuntu:22.04@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace/scripts
+        read_only: true
+      - type: bind
+        source: ${RASTERA_PACKAGE_DIR:?Set the directory containing the archive and checksum}
+        target: /release
+        read_only: true
+      - type: bind
+        source: ${RASTERA_REPORTS_DIR:?Set the output directory}/ubuntu2204
+        target: /reports
+
+  ubuntu2404:
+    <<: *runtime
+    image: rastera-test-ubuntu2404:local
+    build: &ubuntu2404-build
+      context: .
+      args:
+        BASE_IMAGE: ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace/scripts
+        read_only: true
+      - type: bind
+        source: ${RASTERA_PACKAGE_DIR}
+        target: /release
+        read_only: true
+      - type: bind
+        source: ${RASTERA_REPORTS_DIR}/ubuntu2404
+        target: /reports
+
+  debian12:
+    <<: *runtime
+    image: rastera-test-debian12:local
+    build:
+      context: .
+      args:
+        BASE_IMAGE: debian:12-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace/scripts
+        read_only: true
+      - type: bind
+        source: ${RASTERA_PACKAGE_DIR}
+        target: /release
+        read_only: true
+      - type: bind
+        source: ${RASTERA_REPORTS_DIR}/debian12
+        target: /reports
+
+  desktop:
+    <<: *runtime
+    profiles: [desktop]
+    image: rastera-test-ubuntu2404:local
+    build: *ubuntu2404-build
+    network_mode: bridge
+    environment:
+      <<: *environment
+      RASTERA_MODE: desktop
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace/scripts
+        read_only: true
+      - type: bind
+        source: ${RASTERA_PACKAGE_DIR}
+        target: /release
+        read_only: true
+      - type: bind
+        source: ${RASTERA_REPORTS_DIR}/desktop
+        target: /reports
+      - type: volume
+        source: desktop-home
+        target: /home/tester
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6080/vnc.html',timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  desktop-home:
