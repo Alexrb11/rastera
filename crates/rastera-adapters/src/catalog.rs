@@ -190,22 +190,7 @@ impl CatalogBackend for SqliteCatalog {
 }
 
 pub fn catalog_path() -> Result<PathBuf> {
-    let root = if cfg!(windows) {
-        std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
-    } else {
-        std::env::var_os("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
-            })
-    }
-    .ok_or_else(|| {
-        RasteraError::new(
-            ErrorKind::Io,
-            "No se encontró el directorio de datos de usuario",
-        )
-    })?;
-    Ok(root.join("Rastera").join("catalog.sqlite"))
+    crate::platform::catalog_path()
 }
 
 #[cfg(test)]

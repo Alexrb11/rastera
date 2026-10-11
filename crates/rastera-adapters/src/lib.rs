@@ -1,6 +1,7 @@
 //! Filesystem and image codec implementations of the domain contracts.
 
 mod images;
+mod platform;
 pub use images::LocalImages;
 
 mod folders;

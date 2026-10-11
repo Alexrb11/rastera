@@ -2,8 +2,8 @@
 use crate::{
     LocalImages,
     catalog::path_key,
-    catalog_path,
     images::{io_error, stamp},
+    platform::thumbnail_cache_path,
 };
 use rastera_core::{
     CancellationToken, DecodedImage, ErrorKind, FileStamp, FolderEntry, ImageBackend, ImageInfo,
@@ -59,11 +59,7 @@ pub struct ThumbnailCacheStats {
 }
 impl Default for CachedThumbnails {
     fn default() -> Self {
-        Self::new(
-            catalog_path()
-                .ok()
-                .and_then(|path| path.parent().map(|p| p.join("thumbnails-v1"))),
-        )
+        Self::new(thumbnail_cache_path().ok())
     }
 }
 impl CachedThumbnails {
