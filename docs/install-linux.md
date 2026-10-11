@@ -6,11 +6,13 @@ Linux support is experimental in `0.1.0-alpha.3`. The planned package targets x8
 
 - An x86-64 desktop session using X11 or Wayland; this is a graphical application.
 - glibc 2.35 or later. The package is not a musl/Alpine build.
-- A working Vulkan graphics driver and loader, plus libxkbcommon and the libraries for your display server.
+- A working Vulkan graphics driver and loader, plus libxkbcommon and the libraries for your display server. X11 needs libxkbcommon-x11, Xlib, Xlib/XCB, Xcursor, XInput and XCB. Wayland needs its client library and a running compositor.
 - A session D-Bus service, `xdg-desktop-portal`, and a portal backend that implements FileChooser. Install the backend appropriate to your desktop, such as the GTK, GNOME or KDE backend. Zenity supplies the file-dialog fallback.
 - Python 3 for the optional per-user installer; launching the extracted binary does not require Python or Rust.
 
-On Ubuntu, runtime package names include `libvulkan1`, `libxkbcommon0`, `xdg-desktop-portal` and `zenity`. Mesa's Vulkan drivers are supplied by `mesa-vulkan-drivers`; use a driver appropriate to your GPU. Installing a portal service without a working FileChooser backend is insufficient. An empty dialog or a graphics initialization error should be reported with desktop, session type and GPU/driver details.
+On Ubuntu, runtime package names include `libvulkan1`, `libxkbcommon0`, `xdg-desktop-portal` and `zenity`. X11 additionally requires `libxkbcommon-x11-0`, `libx11-6`, `libx11-xcb1`, `libxcursor1`, `libxi6` and `libxcb1`. The `libxkbcommon-x11-0` package also installs its XCB keyboard-extension dependency. Wayland uses `libwayland-client0`. These display and keyboard libraries are loaded dynamically, so a successful `ldd` check or `--build-info` does not establish that the graphical session can start. In particular, installing `libxkbcommon0` alone does not supply `libxkbcommon-x11.so.0`; [Ubuntu supplies it in a separate package](https://packages.ubuntu.com/jammy/libxkbcommon-x11-0).
+
+Mesa's Vulkan drivers are supplied by `mesa-vulkan-drivers`; use a driver appropriate to your GPU. Installing a portal service without a working FileChooser backend is insufficient. An empty dialog or a graphics initialization error should be reported with desktop, session type and GPU/driver details.
 
 ## Download and run
 

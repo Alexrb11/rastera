@@ -74,7 +74,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libwayland-dev libvulkan1 mesa-vulkan-drivers libegl1 libgl1 xvfb dbus-x11 xdg-desktop-portal xdg-desktop-portal-gtk zenity
+          # winit loads these X11 libraries at runtime; ldd does not list them.
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev \
+            libx11-6 libx11-xcb1 libxcursor1 libxi6 libxcb1 \
+            libvulkan1 mesa-vulkan-drivers libegl1 libgl1 xvfb dbus-x11 \
+            xdg-desktop-portal xdg-desktop-portal-gtk zenity
       - name: Validate alpha version and tag
         env:
           REF_TYPE: ${{ github.ref_type }}
