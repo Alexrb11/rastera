@@ -114,6 +114,7 @@ class Runtime:
         self.children = []
         self.stopping = False
         self.exit_code = 0
+        self.failed_service = None
 
     def on_signal(self, number, _frame):
         self.stopping = True
@@ -146,8 +147,19 @@ class Runtime:
 
     def check_services(self, required):
         for name, process in required:
-            if process.poll() is not None:
-                raise RuntimeError(name + " exited; see /reports/" + name + ".log")
+            code = process.poll()
+            if code is not None:
+                signal_name = None
+                if code < 0:
+                    with contextlib.suppress(ValueError):
+                        signal_name = signal.Signals(-code).name
+                self.failed_service = {"name": name, "pid": process.pid,
+                                       "exit_code": code, "signal": signal_name}
+                status = "exit code " + str(code)
+                if signal_name:
+                    status += " (" + signal_name + ")"
+                raise RuntimeError(name + " exited with " + status +
+                                   "; see /reports/" + name + ".log")
 
     def close(self):
         # Each process has its own session. Stop only groups this entrypoint created,
@@ -165,7 +177,49 @@ class Runtime:
                 os.killpg(process.pid, signal.SIGKILL)
             with contextlib.suppress(subprocess.TimeoutExpired):
                 process.wait(timeout=2)
+            log.write("[" + now() + "] Process " + str(process.pid) +
+                      " exit code: " + str(process.returncode) + "\n")
             log.close()
+
+
+def wait_window_manager(runtime, services, env):
+    """Wait for Openbox's live EWMH window and advertised fullscreen support."""
+    deadline = time.monotonic() + 10
+    window_property = r"_NET_SUPPORTING_WM_CHECK\(WINDOW\):\s*window id #\s*(0x[0-9a-fA-F]+)"
+    with (REPORTS / "openbox-readiness.log").open("a", encoding="utf-8") as log:
+        while not runtime.stopping and time.monotonic() < deadline:
+            runtime.check_services(services)
+            try:
+                root = subprocess.run(["xprop", "-display", env["DISPLAY"], "-root",
+                                       "_NET_SUPPORTING_WM_CHECK", "_NET_SUPPORTED"],
+                                      env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                      text=True, timeout=1)
+                log.write("[" + now() + "] Root EWMH properties\n" + root.stdout)
+                supporting = re.search(window_property, root.stdout)
+                if root.returncode == 0 and supporting and re.search(
+                        r"\b_NET_WM_STATE_FULLSCREEN\b", root.stdout):
+                    window = supporting.group(1)
+                    check = subprocess.run(["xprop", "-display", env["DISPLAY"], "-id", window,
+                                            "_NET_SUPPORTING_WM_CHECK", "_NET_WM_NAME"],
+                                           env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                           text=True, timeout=1)
+                    log.write("[" + now() + "] Supporting WM window\n" + check.stdout)
+                    own_window = re.search(window_property, check.stdout)
+                    if (check.returncode == 0 and own_window and
+                            int(own_window.group(1), 16) == int(window, 16) and
+                            re.search(r'_NET_WM_NAME\([^)]*\)\s*=\s*"Openbox"', check.stdout)):
+                        runtime.check_services(services)
+                        log.write("[" + now() + "] Openbox ready; EWMH fullscreen advertised\n")
+                        return
+                log.flush()
+            except subprocess.TimeoutExpired:
+                log.write("[" + now() + "] EWMH query timed out\n")
+                log.flush()
+            time.sleep(0.1)
+    if runtime.stopping:
+        raise InterruptedError("Container shutdown requested")
+    raise RuntimeError("Openbox did not advertise a live EWMH window and fullscreen support; "
+                       "see /reports/openbox-readiness.log and openbox.log")
 
 
 def start_x11_display(runtime, env):
@@ -182,7 +236,9 @@ def start_x11_display(runtime, env):
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
             if probe.returncode == 0:
                 window_manager = runtime.start("openbox", ["openbox", "--sm-disable"], env=env)
-                return (("xvfb", server), ("openbox", window_manager))
+                services = (("xvfb", server), ("openbox", window_manager))
+                wait_window_manager(runtime, services, env)
+                return services
         except subprocess.TimeoutExpired:
             pass
         time.sleep(0.2)
@@ -414,6 +470,8 @@ def main():
         return code
     except BaseException as error:
         environment["finished_utc"] = now()
+        if runtime.failed_service:
+            environment["failed_service"] = runtime.failed_service
         if runtime.stopping:
             environment["shutdown_exit_code"] = runtime.exit_code
             save_environment(environment)
