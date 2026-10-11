@@ -38,7 +38,7 @@ instructions = """RASTERA · MATERIAL DE PRÁCTICA
 
 Fotos de ejemplo generadas con IA mediante image_gen integrado.
 Procedencia y prompts: procedencia.json.
-Capturas reales de Rastera 0.1.0 en Windows, 10 de octubre de 2026.
+Capturas reales de Rastera 0.1.0 en Windows, actualizadas el 11 de octubre de 2026.
 Los originales PNG miden 1254 x 1254 px; las copias JPEG, 1000 x 1000 px.
 """
 with ZipFile(destination / "rastera-tutorial-y-ejemplos.zip", "w", ZIP_DEFLATED) as package:

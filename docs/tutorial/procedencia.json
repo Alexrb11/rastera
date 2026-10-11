@@ -15,7 +15,7 @@
     ]
   },
   "screenshots": {
-    "implementation_commit": "5f932e9",
+    "implementation_commit": "2813fc0",
     "source": "Renderizado nativo de Rastera con la característica opcional capture",
     "preset": "Catálogo aislado de demostración: taza y cuenco favoritos y etiquetados cerámica, aprobada; jarrón cerámica, revisar.",
     "pixel_size": [
@@ -26,7 +26,9 @@
       1180,
       780
     ],
-    "windows_scaling": "150%"
+    "windows_scaling": "150%",
+    "updated_on": "2026-10-11",
+    "bulk_organization": "Catálogos aislados antes y después del guardado real: tres seleccionadas, una fuera del filtro aprobada; se marcan favoritas y se añade colección-demo sin retirar etiquetas anteriores."
   },
   "exports": {
     "source": "Lote real ejecutado por Rastera, sin modificar los originales",

@@ -29,3 +29,11 @@ cargo build -p rastera-desktop --release --features capture --locked
 Los destinos de exportación y medición deben ser nuevos. Usa fotografías de prueba y sustituye la ruta del último comando. Los scripts terminan sus propias instancias al acabar. La característica capture está deshabilitada en la compilación normal.
 
 Las siete capturas publicadas están en [el tutorial ilustrado](tutorial/index.html); las instrucciones de usuario están en [Usar Rastera](usage.md).
+
+## Actualización del 11 de octubre de 2026
+
+La entrega añade navegación y selección de la cuadrícula con teclado y organización conjunta. Las 58 pruebas del workspace incluyen eventos de egui para foco, desplazamiento a una imagen fuera de pantalla, apertura con Enter y bloqueo de navegación mientras se escribe o se desactiva la cuadrícula. Las pruebas del catálogo cubren combinación y retirada de etiquetas, preservación de metadatos, rutas Unicode, eliminación de rutas duplicadas, rollback por límite de etiquetas y por error SQL, metadatos pendientes y cambio de carpeta durante una escritura aceptada. Una receta sin cambios conserva exactamente la anotación previa.
+
+Organizar selección se capturó antes y después de un guardado real a 1180 × 780 y 760 × 480 puntos. Se comprobó que los catálogos de vista previa permanecen sin la nueva etiqueta; los catálogos guardados contienen colección-demo y conservan las etiquetas particulares de las tres imágenes. Una imagen estaba oculta por el filtro y recibió el cambio por pertenecer a la selección. Los archivos originales permanecen iguales al contenido versionado. La validación del teclado usa eventos de egui; queda pendiente comprobar lectores de pantalla e interacción prolongada en otros entornos.
+
+Las compilaciones normal y optimizada, el formato y Clippy con todas las características pasan. El tutorial actualizado se comprobó en Brave a 1400 y 390 píxeles: 14 imágenes cargadas, sin desbordamiento horizontal ni errores de JavaScript, ampliación y cierre con Esc correctos y descarga con SHA-256 idéntico al original.

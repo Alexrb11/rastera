@@ -89,7 +89,7 @@ dialog img{display:block;width:100%;height:auto}
 <a href="#exportar">03 · Preparar para publicar</a>
 <a href="#compartir">04 · Compartir copias</a>
 <a href="#atajos">Atajos y dudas</a>
-<div class="nav-note">Capturas reales de Rastera.<br>Fotos de ejemplo generadas con IA.<br>Guía del 10 de octubre de 2026.</div>
+<div class="nav-note">Capturas reales de Rastera.<br>Fotos de ejemplo generadas con IA.<br>Guía actualizada el 11 de octubre de 2026.</div>
 </nav>
 <main>
 <div id="inicio">
@@ -137,13 +137,23 @@ dialog img{display:block;width:100%;height:auto}
 <ol class="steps">
 <li>Vuelve a <strong>Biblioteca</strong>, selecciona la taza y abre <strong>Propiedades → Editar organización</strong>.</li>
 <li>Marca <strong>Favorita</strong>, escribe <code>cerámica, aprobada</code> y pulsa <strong>Guardar cambios</strong>.</li>
-<li>Repite con el cuenco. Para el jarrón, usa <code>cerámica, revisar</code> y deja Favorita sin marcar. La organización se edita <strong>imagen por imagen</strong>.</li>
+<li>Repite con el cuenco. Para el jarrón, usa <code>cerámica, revisar</code> y deja Favorita sin marcar. En este paso se edita imagen por imagen; para datos comunes puedes usar Organizar selección.</li>
 </ol>
 <figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura de edición de etiquetas"><img src="capturas/organizacion.png" alt="Ventana Organizar imagen con Favorita marcada y etiquetas cerámica, aprobada" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 3.</strong> La taza marcada como favorita y etiquetada. Estos datos se guardan en el catálogo local de Rastera.</figcaption></figure>
 <h3>Encontrar solo las fotos aprobadas</h3>
 <p>Pulsa <strong>Selección → Deseleccionar</strong> y escribe <code>aprobada</code> en <strong>Buscar nombre o etiqueta</strong>. Deben aparecer la taza y el cuenco: <strong>2 de 3 imágenes</strong>. Con <kbd>Ctrl</kbd> + <kbd>F</kbd> enfocas la búsqueda. También puedes activar <strong>Favoritas</strong> o filtrar por formato. Para exportar solo estos resultados, pulsa ahora <strong>Selección → Seleccionar todo</strong>.</p>
 <figure class="shot"><button type="button" data-enlarge aria-label="Ampliar captura de búsqueda por etiqueta"><img src="capturas/busqueda.png" alt="Búsqueda de aprobada en Rastera con dos resultados: taza y cuenco" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Captura 4.</strong> Buscar una etiqueta recupera las imágenes asociadas, aunque esa palabra no esté en sus nombres.</figcaption></figure>
 <p class="note"><strong>Ten en cuenta la selección:</strong> cambiar un filtro no elimina las imágenes seleccionadas que queden ocultas. Antes de elegir un nuevo grupo, pulsa Selección → Deseleccionar. Restablecer limpia los filtros, pero mantiene la selección.</p>
+<h3>Aplicar datos comunes a varias imágenes</h3>
+<ol class="steps">
+<li>Pulsa <strong>Restablecer</strong> y <strong>Selección → Seleccionar todo</strong> para elegir las tres fotos. Escribe de nuevo <code>aprobada</code>: verás dos fotos, pero el contador seguirá mostrando <strong>3 seleccionadas</strong>, con una fuera del filtro.</li>
+<li>Pulsa <strong>Organizar…</strong> o <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd>. Comprueba el número de imágenes y la lista de <strong>Imágenes incluidas</strong>.</li>
+<li>En Favoritas, elige <strong>Marcar como favoritas</strong>. Deja <strong>Añadir etiquetas</strong> y escribe <code>colección-demo</code>. La vista previa debe indicar que cambiarán las tres fotos.</li>
+<li>Pulsa <strong>Guardar organización</strong>. La etiqueta común se añade a las tres y se conservan <code>cerámica</code>, <code>aprobada</code> y <code>revisar</code> donde correspondan. El jarrón también pasa a ser favorito.</li>
+</ol>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar vista previa de organización conjunta"><img src="capturas/organization-preview.png" alt="Organizar selección con tres imágenes, una oculta por el filtro, favoritos y la etiqueta colección-demo" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Organización conjunta.</strong> El panel conserva la selección completa, incluidas las imágenes ocultas por el filtro.</figcaption></figure>
+<figure class="shot"><button type="button" data-enlarge aria-label="Ampliar resultado de organización conjunta"><img src="capturas/organization-saved.png" alt="Organización guardada para tres imágenes, conservando las etiquetas anteriores y añadiendo colección-demo" width="1770" height="1170" loading="lazy"></button><figcaption><strong>Guardado real.</strong> El catálogo de demostración se actualizó mediante una transacción; no se modificaron los archivos de imagen.</figcaption></figure>
+<p class="note">Para retirar una etiqueta concreta, cambia a <strong>Retirar etiquetas</strong> y escribe su texto exacto. Favoritas → <strong>Sin cambios</strong> conserva el estado de cada imagen. Si alguna imagen superaría el límite de 32 etiquetas o falla la escritura, no se aplica ninguna modificación de esa operación.</p>
 <p class="outcome"><strong>Resultado:</strong> puedes volver a localizar las fotos aprobadas. Los favoritos y etiquetas permanecen entre sesiones en este equipo; no se escriben dentro de las fotografías. Si mueves o renombras un archivo fuera de Rastera, su nueva ruta no hereda automáticamente la organización anterior.</p>
 </section>
 <section id="exportar">
@@ -196,6 +206,8 @@ dialog img{display:block;width:100%;height:auto}
 <tr><td>Abrir carpeta / imagen</td><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>O</kbd> / <kbd>Ctrl</kbd> + <kbd>O</kbd></td></tr>
 <tr><td>Buscar / exportar</td><td><kbd>Ctrl</kbd> + <kbd>F</kbd> en Biblioteca / <kbd>Ctrl</kbd> + <kbd>E</kbd> para la selección o imagen del visor</td></tr>
 <tr><td>Abrir ruta / actualizar carpeta</td><td><kbd>F4</kbd> / <kbd>F5</kbd></td></tr>
+<tr><td>Navegar y abrir miniaturas</td><td>Flechas, <kbd>Home</kbd>, <kbd>End</kbd>, RePág / AvPág y <kbd>Enter</kbd>. Con Shift seleccionas un rango y con Ctrl mueves el foco sin cambiar la selección.</td></tr>
+<tr><td>Organizar la selección</td><td>Organizar… o <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> en Biblioteca</td></tr>
 <tr><td>Añadir a la selección</td><td><kbd>Ctrl</kbd> + clic</td></tr>
 <tr><td>Seleccionar un rango</td><td><kbd>Shift</kbd> + clic</td></tr>
 <tr><td>Seleccionar resultados del filtro</td><td>Selección → Seleccionar todo o <kbd>Ctrl</kbd> + <kbd>A</kbd> en Biblioteca, fuera de un campo de texto</td></tr>
@@ -208,7 +220,7 @@ dialog img{display:block;width:100%;height:auto}
 <details open><summary>Solo quiero exportar una imagen</summary><p>En el visor, <strong>Exportar imagen</strong> usa únicamente la imagen abierta, aunque exista una selección anterior en Biblioteca.</p></details>
 <details open><summary>Una imagen no se puede abrir o exportar</summary><p>Comprueba el mensaje que muestra Rastera. Los archivos dañados, formatos o perfiles de color no compatibles y algunas imágenes demasiado grandes para el presupuesto de memoria pueden rechazarse.</p></details>
 <footer>
-<p><strong>Sobre esta guía.</strong> Capturas del renderizado real de Rastera 0.1.0 en Windows, tomadas el 10 de octubre de 2026. Se preparó un catálogo de demostración aislado para las etiquetas y favoritos; las copias JPEG se generaron con el motor de exportación de la aplicación. Las fotografías de cerámica son ejemplos generados con IA mediante la herramienta integrada de generación de imágenes.</p>
+<p><strong>Sobre esta guía.</strong> Capturas del renderizado real de Rastera 0.1.0 en Windows, actualizadas el 11 de octubre de 2026. Se preparó un catálogo de demostración aislado para las etiquetas y favoritos; las copias JPEG se generaron con el motor de exportación de la aplicación. Las fotografías de cerámica son ejemplos generados con IA mediante la herramienta integrada de generación de imágenes.</p>
 <p>Este documento funciona sin conexión. Puedes ampliar las capturas, descargar las fotos de práctica e imprimir la guía. La interfaz puede cambiar durante el desarrollo.</p>
 </footer>
 </section>
