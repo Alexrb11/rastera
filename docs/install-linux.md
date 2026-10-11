@@ -46,7 +46,11 @@ Replacing the application preserves these directories. Cache files are disposabl
 
 ## Current limits and testing
 
-The scope remains one folder without recursion, up to 10,000 entries, with static 8-bit SDR JPEG, PNG and WebP. RAW, HEIC, animated images and monitor-profile conversion are unsupported. External renames do not transfer tags or favorites. Linux desktop dialogs, different GPU drivers, Wayland/X11 scaling and accessibility require manual validation; a headless CI smoke test covers only its recorded environment.
+The scope remains one folder without recursion, up to 10,000 entries, with static 8-bit SDR JPEG, PNG and WebP. RAW, HEIC, animated images and monitor-profile conversion are unsupported. External renames do not transfer tags or favorites.
+
+The alpha.3 package passed all 11 runtime checks on Ubuntu 22.04, Ubuntu 24.04 and Debian 12 containers under Docker Desktop. Separate manual interaction on Ubuntu 24.04 confirmed the grid, favorite/tag editing and persistence after restart, search, viewer, automatic folder updates, JPEG export with existing-output refusal, the GTK portal file chooser and normal shutdown. See [the Linux container testing guide](testing-linux-containers.md) for the exact archive revision, results and fixture scope.
+
+These results cover X11/Xvfb with Mesa software Vulkan on the WSL2 kernel. Physical GPU drivers, native Wayland, other desktop portal backends, scaling, accessibility and installations on independent Linux kernels still require testing. The containers do not validate macOS. A CI smoke test establishes only its recorded environment.
 
 For a useful report, include version, archive checksum, distribution, glibc version, desktop, X11/Wayland, GPU/driver and reproducible steps. Use practice images you may share. Report security problems through [SECURITY.md](../SECURITY.md).
 

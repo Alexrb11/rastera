@@ -19,11 +19,13 @@ El ejecutable Windows no está firmado. La prueba en un Windows limpio y la vali
 | Plataforma | Paquete preparado para alpha.3 | Estado y requisitos |
 | --- | --- | --- |
 | Windows 10/11 x64 | ZIP portable MSVC | Plataforma inicial de la alpha; Windows limpio, otras GPU y accesibilidad pendientes. [Guía](docs/install-windows.md). |
-| Linux x86-64 | tar.gz con instalador por usuario opcional | Experimental: glibc ≥ 2.35, Vulkan, X11/Wayland y portal de archivos. Pruebas de escritorio pendientes. [Guía](docs/install-linux.md). |
+| Linux x86-64 | tar.gz con instalador por usuario opcional | Experimental: glibc ≥ 2.35, Vulkan, X11/Wayland y portal de archivos. Pruebas en contenedores Ubuntu/Debian y revisión UI en X11 pasadas; hardware real y Wayland pendientes. [Guía](docs/install-linux.md). |
 | macOS Apple Silicon | ZIP con `Rastera.app` arm64 | Experimental: mínimo declarado macOS 13, matriz de compilación macOS 15. Firma ad-hoc, sin Developer ID ni notarización. [Guía](docs/install-macos.md). |
 | macOS Intel | ZIP con `Rastera.app` x64 | Mismos límites; pruebas de escritorio y del mínimo macOS 13 pendientes. [Guía](docs/install-macos.md). |
 
 Linux usa los directorios XDG de datos y caché, con sus rutas de respaldo bajo HOME. macOS usa `Library/Application Support/Rastera` y `Library/Caches/Rastera`; un catálogo de una build anterior puede conservar su ubicación. Las guías detallan las rutas y la actualización. La interfaz y el tutorial siguen en español.
+
+El paquete Linux alpha.3 pasó las 11 comprobaciones de ejecución en cada contenedor de Ubuntu 22.04, Ubuntu 24.04 y Debian 12 con Docker Desktop. La revisión manual de Ubuntu 24.04 en X11 confirmó cuadrícula, edición y persistencia de favoritos y etiquetas tras reiniciar, búsqueda, visor, actualización automática de carpetas, exportación JPEG, rechazo de colisiones, diálogo GTK y cierre normal. Estas pruebas usan Vulkan por software sobre WSL2; no validan GPU físicas, Wayland ni macOS. Consulta [las pruebas en contenedores](docs/testing-linux-containers.md) para conocer la revisión y el hash del paquete, los resultados y los límites.
 
 ## Estado del proyecto
 
@@ -63,6 +65,7 @@ El diseño favorece la carga progresiva y la reutilización de recursos. Usar Ru
 
 - [Guía de uso](docs/usage.md): selección, organización y exportación.
 - [Instalación Linux](docs/install-linux.md) y [macOS](docs/install-macos.md): requisitos, paquetes experimentales, directorios y límites de integración; guías en inglés.
+- [Pruebas Linux en contenedores](docs/testing-linux-containers.md): ejecución sin Rust en Ubuntu/Debian con Docker Desktop, informes y escritorio opcional para revisión manual; guía en inglés.
 - [Tutorial ilustrado](docs/tutorial/index.html): casos de uso paso a paso, capturas reales e imágenes de práctica. Ábrelo en un navegador; [preparación y procedencia](docs/tutorial/README.md).
 - [Arquitectura](docs/architecture.md): módulos, dependencias, concurrencia, catálogo, cachés y operaciones sobre archivos.
 - [Plan de desarrollo](docs/roadmap.md): entregas y criterios de aceptación.
