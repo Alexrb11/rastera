@@ -379,9 +379,11 @@ def run_desktop(runtime, archive, expected_commit, environment, services):
         copy_practice_images(package, practice)
         exports.mkdir(parents=True, exist_ok=True)
         executable = package / "bin/rastera"
+        host_port = 6081 if runtime.env["RASTERA_DISPLAY_BACKEND"] == "wayland" else 6080
+        desktop_url = f"http://localhost:{host_port}/vnc.html"
         environment.update({"package_verified": True, "extracted_package": str(package),
                             "executable": str(executable), "practice_folder": str(practice),
-                            "export_folder": str(exports), "novnc_url": "http://localhost:6080/vnc.html"})
+                            "export_folder": str(exports), "novnc_url": desktop_url})
         save_environment(environment)
         app = runtime.start("rastera", [str(executable), str(practice)], cwd=package)
         vnc_env = (compositor_environment(runtime, nested=True)
@@ -391,7 +393,7 @@ def run_desktop(runtime, archive, expected_commit, environment, services):
         websocket = runtime.start("websockify", ["websockify", "--web", "/usr/share/novnc",
                                                  "6080", "localhost:5900"])
         required = services + (("x11vnc", vnc), ("websockify", websocket))
-        print("Rastera desktop ready at http://localhost:6080/vnc.html", flush=True)
+        print("Rastera desktop ready at " + desktop_url, flush=True)
         app_exit_reported = False
         while not runtime.stopping:
             runtime.check_services(required)

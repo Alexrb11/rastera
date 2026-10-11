@@ -11,6 +11,10 @@ x-runtime: &runtime
   mem_limit: 2g
   pids_limit: 256
   shm_size: 256m
+  # Display sockets/locks belong to this boot; preserve catalog data in HOME only.
+  tmpfs:
+    - /tmp:rw,exec,nosuid,nodev,size=512m,mode=1777
+    - /tmp/rastera-runtime:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=10001,gid=10001
   environment: &environment
     RASTERA_ARCHIVE: /release/${RASTERA_ARCHIVE_NAME:?Set the Linux archive filename}
     RASTERA_EXPECTED_COMMIT: ${RASTERA_EXPECTED_COMMIT:-}
