@@ -253,6 +253,8 @@ def compositor_environment(runtime, nested=False):
         env["DISPLAY"] = os.environ.get("DISPLAY", ":99")
         env["GDK_BACKEND"] = "x11"
         env["XDG_SESSION_TYPE"] = "x11"
+        env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+        env["GALLIUM_DRIVER"] = "llvmpipe"
     return env
 
 
@@ -261,7 +263,11 @@ def weston_command(env, nested):
                              capture_output=True, text=True, timeout=5).stdout.strip()
     help_text = subprocess.run(["weston", "--help"], env=env, check=True,
                                capture_output=True, text=True, timeout=5).stdout
-    renderer = "--renderer=pixman" if "--renderer=NAME" in help_text else "--use-pixman"
+    modern_renderer = "--renderer=NAME" in help_text
+    # Weston 13's nested X11/pixman renderer crashed with SIGSEGV in this
+    # container. Its GL renderer is still CPU-only through Mesa llvmpipe.
+    # Keep the independently validated headless pixman configuration unchanged.
+    renderer = ("--renderer=gl" if nested else "--renderer=pixman") if modern_renderer else "--use-pixman"
     if renderer == "--use-pixman" and "--use-pixman" not in help_text:
         raise RuntimeError("Weston does not advertise a software pixman renderer")
     backend = "x11" if nested else "headless"
@@ -312,7 +318,8 @@ def start_wayland_display(runtime, mode, environment):
         raise InterruptedError("Container shutdown requested")
     environment["compositor"] = {
         "name": "Weston", "version": version, "backend": "x11-nested" if nested else "headless",
-        "renderer": "pixman (software)", "command": command, "wayland_socket": str(socket_path),
+        "renderer": "GL (Mesa llvmpipe software)" if "--renderer=gl" in command else "pixman (software)",
+        "command": command, "wayland_socket": str(socket_path),
         "readiness_probe": Path(diagnostic).name, "parent_display": env.get("DISPLAY"),
         "xwayland_enabled": False,
     }
