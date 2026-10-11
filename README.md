@@ -10,7 +10,7 @@ El primer visor está implementado: abre JPEG, PNG y WebP estáticos mediante di
 
 La cuadrícula dibuja únicamente las filas visibles, carga miniaturas de 256 píxeles y ofrece selección múltiple con Ctrl+clic, selección de toda la carpeta y apertura con doble clic. El botón Actualizar vuelve a leer la carpeta e invalida las texturas. Su caché LRU mantiene como máximo 128 texturas (32 MiB de píxeles en GPU), además de la vista previa. Las miniaturas se reutilizan entre sesiones mediante una caché desechable en disco. El visor tiene preferencia al solicitar buffers; los trabajadores comparten el presupuesto de memoria.
 
-El catálogo SQLite guarda favoritos, etiquetas y dimensiones de las imágenes abiertas. La cuadrícula permite buscar por nombre o etiqueta y filtrar por favoritos y formato. Los lotes convierten a PNG, JPEG o WebP sin pérdidas, redimensionan sin ampliar y rotan en pasos de 90 grados. Incluyen revisión del plan, progreso, cancelación y diario SQLite por lote. Exportan desde los originales a otra carpeta y publican sin reemplazar archivos existentes. Hay [mediciones iniciales](docs/performance-results.md) de caché, tiempos y memoria en Windows con corpus sintéticos.
+El catálogo SQLite guarda favoritos, etiquetas y dimensiones de las imágenes abiertas. Organizar selección aplica favoritos y añade o retira etiquetas para varias imágenes en una transacción, conservando los datos particulares de cada una. La cuadrícula permite buscar por nombre o etiqueta y filtrar por favoritos y formato. Los lotes convierten a PNG, JPEG o WebP sin pérdidas, redimensionan sin ampliar y rotan en pasos de 90 grados. Incluyen revisión del plan, progreso, cancelación y diario SQLite por lote. Exportan desde los originales a otra carpeta y publican sin reemplazar archivos existentes. Hay [mediciones iniciales](docs/performance-results.md) de caché, tiempos y memoria en Windows con corpus sintéticos.
 
 También se pueden abrir carpetas mediante diálogo, ruta, arrastre o argumento de inicio. La lectura emite páginas progresivamente y la lista dibuja únicamente las filas visibles. Las flechas permiten pasar al archivo anterior o siguiente. El alcance inicial es una carpeta sin recursión, con un límite de 10.000 archivos y 16 MiB de rutas; los enlaces se excluyen. La lista se ordena por ruta al terminar el escaneo. Una extensión compatible no garantiza que su contenido sea una imagen válida.
 
@@ -21,7 +21,8 @@ Windows será la primera plataforma de desarrollo. La separación entre interfaz
 - Interfaz de gestor de imágenes con barras compactas, selección por rango y panel de propiedades plegable.
 - Navegación por carpetas con cuadrícula de miniaturas, selección y ordenación.
 - Visor con zoom, desplazamiento, ajuste a ventana y navegación con teclado.
-- Catálogo local con favoritos, etiquetas y búsqueda por nombre y metadatos básicos.
+- Catálogo local con favoritos, etiquetas, búsqueda y organización conjunta de la selección.
+- Navegación de la cuadrícula con flechas, páginas, rangos con Shift y apertura con Enter.
 - Conversión, redimensionado y rotación de imágenes por lotes.
 - Revisión de nombres y dimensiones del lote, progreso, cancelación, resultados y recuperación de pendientes con huellas verificadas.
 - Renombrado por lotes en una fase posterior, con registro de operaciones y recuperación.

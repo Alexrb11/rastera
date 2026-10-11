@@ -259,7 +259,7 @@ impl ThumbnailGrid {
             Sense::focusable_noninteractive(),
         );
         keyboard.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, keyboard_enabled,
-            format!("Biblioteca, {} imágenes. Flechas para navegar, Espacio para seleccionar, Enter para abrir.", entries.len())));
+            format!("Biblioteca, {} imágenes. Foco: {}. Flechas para navegar, Espacio para seleccionar, Enter para abrir.", entries.len(), self.focused.as_deref().or(current).and_then(|path| path.file_name()).unwrap_or_default().to_string_lossy())));
         ui.memory_mut(|memory| {
             memory.set_focus_lock_filter(
                 keyboard.id,
@@ -417,6 +417,16 @@ impl ThumbnailGrid {
                                 ),
                                 egui::StrokeKind::Inside,
                             );
+                            if keyboard.has_focus()
+                                && self.focused.as_deref().or(current) == Some(path.as_path())
+                            {
+                                ui.painter().rect_stroke(
+                                    rect.shrink(3.0),
+                                    1.0,
+                                    egui::Stroke::new(1.0, theme::TEXT),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
                             let area = Rect::from_min_max(
                                 rect.min + egui::vec2(5.0, 5.0),
                                 rect.max - egui::vec2(5.0, 42.0),
@@ -584,7 +594,7 @@ impl ThumbnailGrid {
                                 ui.separator();
                                 if ui
                                     .add_enabled(
-                                        catalog.ready,
+                                        catalog.can_edit(),
                                         egui::Button::new("Organizar imagen…"),
                                     )
                                     .clicked()

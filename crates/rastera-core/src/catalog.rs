@@ -50,7 +50,7 @@ impl CatalogEdit {
         }
         if self.remove_tags {
             updated.tags.retain(|tag| !self.tags.contains(tag));
-        } else {
+        } else if !self.tags.is_empty() {
             updated.tags.extend(self.tags.iter().cloned());
             updated.tags.sort();
             updated.tags.dedup();
@@ -94,6 +94,7 @@ mod tests {
             tags: vec!["paisaje".into(), "aprobada".into()],
             ..Default::default()
         };
+        assert_eq!(CatalogEdit::default().apply(&original).unwrap(), original);
         let updated = add.apply(&original).unwrap();
         assert_eq!(updated.tags, ["aprobada", "paisaje", "viaje"]);
         assert!(updated.favorite);

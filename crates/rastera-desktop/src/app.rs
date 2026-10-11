@@ -52,6 +52,8 @@ pub struct RasteraApp {
     #[cfg(feature = "capture")]
     capture_ready_at: Option<std::time::Instant>,
     #[cfg(feature = "capture")]
+    capture_bulk_started: bool,
+    #[cfg(feature = "capture")]
     navigation: Option<crate::navigation::NavigationBenchmark>,
 }
 
@@ -107,6 +109,8 @@ impl RasteraApp {
             capture_requested: false,
             #[cfg(feature = "capture")]
             capture_ready_at: None,
+            #[cfg(feature = "capture")]
+            capture_bulk_started: false,
             #[cfg(feature = "capture")]
             navigation: crate::navigation::NavigationBenchmark::from_env(),
         };
@@ -326,8 +330,7 @@ impl RasteraApp {
             && self.catalog.ready
             && let (Some(path), Some(preview)) = (&self.path, &self.preview)
         {
-            self.catalog.save_metadata(path, &preview.info);
-            self.metadata_dirty = false;
+            self.metadata_dirty = !self.catalog.save_metadata(path, &preview.info);
         }
     }
 
@@ -340,6 +343,7 @@ impl RasteraApp {
         }
         let panel_open = self.batch.open
             || self.catalog.editor_open
+            || self.catalog.bulk_open
             || self.route_open
             || self.details_popup
             || self.shortcuts_open
@@ -349,10 +353,24 @@ impl RasteraApp {
         {
             self.batch.open = false;
             self.catalog.editor_open = false;
+            self.catalog.bulk_open = false;
             self.route_open = false;
             self.details_popup = false;
             self.shortcuts_open = false;
             self.diagnostics_open = false;
+        }
+        if !panel_open
+            && self.grid_view
+            && !self.grid.selected.is_empty()
+            && self.catalog.can_edit()
+            && ctx.input_mut(|input| {
+                input.consume_key(
+                    egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                    egui::Key::T,
+                )
+            })
+        {
+            self.organize_selection();
         }
         if !panel_open
             && self.folder.is_some()
@@ -384,7 +402,11 @@ impl RasteraApp {
         if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::O)) {
             self.pick_file(ctx);
         }
-        if !ctx.egui_wants_keyboard_input() && !panel_open && !self.batch.open {
+        if !ctx.egui_wants_keyboard_input()
+            && !panel_open
+            && !self.batch.open
+            && !self.catalog.bulk_open
+        {
             if self.grid_view
                 && ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::A))
             {
@@ -492,6 +514,7 @@ impl RasteraApp {
             && (self.path.is_none() || self.catalog.ready)
             && !self.grid.busy()
             && !self.batch.busy
+            && !self.catalog.bulk_busy
             && !self.detail.busy()
         {
             let ready_at = self
@@ -523,6 +546,10 @@ impl RasteraApp {
         if let Some(path) = self.folder.as_ref().or(self.path.as_ref()) {
             self.path_input = theme::display_path(path);
         }
+    }
+    fn organize_selection(&mut self) {
+        self.catalog
+            .open_bulk(self.grid.selected.iter().cloned().collect());
     }
 
     fn auxiliary_windows(&mut self, ctx: &egui::Context) {
@@ -557,6 +584,8 @@ impl RasteraApp {
             .open(&mut self.shortcuts_open)
             .collapsible(false)
             .default_width(420.0)
+            .vscroll(true)
+            .max_height((ctx.viewport_rect().height() - 70.0).max(240.0))
             .show(ctx, |ui| {
                 egui::Grid::new("shortcuts")
                     .spacing([24.0, 10.0])
@@ -567,6 +596,7 @@ impl RasteraApp {
                             ("Ctrl+A", "Seleccionar los resultados del filtro"),
                             ("Ctrl+F", "Buscar en la carpeta"),
                             ("Ctrl+E", "Exportar la selección o imagen"),
+                            ("Ctrl+Shift+T", "Organizar la selección de Biblioteca"),
                             ("F4 / F5", "Abrir una ruta / actualizar carpeta"),
                             ("Ctrl+clic", "Añadir o quitar de la selección"),
                             ("Shift+clic", "Seleccionar un rango"),
@@ -698,6 +728,17 @@ impl RasteraApp {
                 }
             });
             ui.menu_button("Herramientas", |ui| {
+                if ui
+                    .add_enabled(
+                        (!self.grid.selected.is_empty() && self.catalog.can_edit())
+                            || self.catalog.bulk_busy,
+                        egui::Button::new("Organizar selección…").shortcut_text("Ctrl+Shift+T"),
+                    )
+                    .clicked()
+                {
+                    self.organize_selection();
+                    ui.close();
+                }
                 if ui
                     .add_enabled(
                         !self.grid.selected.is_empty() || self.path.is_some() || self.batch.busy,
@@ -889,6 +930,19 @@ impl RasteraApp {
                         .filter(|entry| self.grid.selected.contains(&entry.path))
                         .count();
                 ui.label(RichText::new(format!("{selected} seleccionadas")).color(ACCENT));
+                if ui
+                    .add_enabled(
+                        self.catalog.can_edit() && selected > 0 || self.catalog.bulk_busy,
+                        egui::Button::new(if self.catalog.bulk_busy {
+                            "Ver organización"
+                        } else {
+                            "Organizar…"
+                        }),
+                    )
+                    .clicked()
+                {
+                    self.organize_selection();
+                }
                 if hidden > 0 {
                     ui.label(
                         RichText::new(format!("{hidden} fuera del filtro"))
@@ -955,6 +1009,7 @@ impl RasteraApp {
             &self.catalog,
             !(self.batch.open
                 || self.catalog.editor_open
+                || self.catalog.bulk_open
                 || self.route_open
                 || self.details_popup
                 || self.shortcuts_open
@@ -1009,6 +1064,11 @@ impl RasteraApp {
                 ui.label(RichText::new(count).small().color(MUTED));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if self.catalog.bulk_busy
+                    && ui.small_button("Guardando organización · Ver").clicked()
+                {
+                    self.catalog.bulk_open = true;
+                }
                 if self.batch.busy && ui.small_button("Exportación en curso · Ver lote").clicked()
                 {
                     self.batch.open = true;
@@ -1094,7 +1154,7 @@ impl RasteraApp {
         let mut favorite = annotation.favorite;
         if ui
             .add_enabled(
-                self.catalog.ready,
+                self.catalog.can_edit(),
                 egui::Checkbox::new(&mut favorite, "Favorita"),
             )
             .changed()
@@ -1111,7 +1171,7 @@ impl RasteraApp {
         }
         if ui
             .add_enabled(
-                self.catalog.ready,
+                self.catalog.can_edit(),
                 egui::Button::new("Editar organización…"),
             )
             .clicked()
@@ -1502,6 +1562,17 @@ impl eframe::App for RasteraApp {
             });
         self.auxiliary_windows(&ctx);
         #[cfg(feature = "capture")]
+        if !self.capture_bulk_started
+            && self.catalog.ready
+            && !self.folder_loading
+            && std::env::var_os("RASTERA_CAPTURE_TO").is_some()
+            && std::env::var("RASTERA_CAPTURE_PANEL").as_deref() == Ok("bulk-organization")
+        {
+            self.capture_bulk_started = true;
+            self.catalog
+                .capture_bulk(self.grid.selected.iter().cloned().collect());
+        }
+        #[cfg(feature = "capture")]
         if self.catalog.ready
             && std::env::var_os("RASTERA_CAPTURE_PANEL").as_deref()
                 == Some(std::ffi::OsStr::new("organization"))
@@ -1513,6 +1584,7 @@ impl eframe::App for RasteraApp {
             self.path.as_deref(),
             self.preview.as_ref().map(|preview| &preview.info),
         );
+        self.catalog.bulk_editor(&ctx);
         self.batch.show(&ctx);
         if self.diagnostics_open {
             let (tiles, full) = self.detail.diagnostics();

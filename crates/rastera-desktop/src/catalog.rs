@@ -1,6 +1,8 @@
 use eframe::egui;
 use rastera_adapters::{SqliteCatalog, catalog_path};
-use rastera_core::{Annotation, ErrorKind, FolderEntry, ImageInfo, RasteraError, normalize_tags};
+use rastera_core::{
+    Annotation, CatalogEdit, ErrorKind, FolderEntry, ImageInfo, RasteraError, normalize_tags,
+};
 use rastera_engine::{CatalogCommand, CatalogWorker};
 use std::{
     collections::{HashMap, HashSet},
@@ -25,6 +27,17 @@ pub struct Catalog {
     editor_path: Option<PathBuf>,
     editor_favorite: bool,
     editor_tags: String,
+    pub bulk_open: bool,
+    pub bulk_busy: bool,
+    bulk_paths: Vec<PathBuf>,
+    bulk_favorite: Option<bool>,
+    bulk_tags: String,
+    bulk_remove_tags: bool,
+    bulk_error: Option<String>,
+    bulk_result: Option<usize>,
+    bulk_preview_dirty: bool,
+    bulk_preview: std::result::Result<usize, String>,
+    bulk_hidden: usize,
 }
 
 impl Catalog {
@@ -63,6 +76,17 @@ impl Catalog {
             editor_path: None,
             editor_favorite: false,
             editor_tags: String::new(),
+            bulk_open: false,
+            bulk_busy: false,
+            bulk_paths: Vec::new(),
+            bulk_favorite: None,
+            bulk_tags: String::new(),
+            bulk_remove_tags: false,
+            bulk_error: None,
+            bulk_result: None,
+            bulk_preview_dirty: true,
+            bulk_preview: Ok(0),
+            bulk_hidden: 0,
         }
     }
     #[cfg(test)]
@@ -82,6 +106,7 @@ impl Catalog {
         self.dirty = true;
         self.editor_path = None;
         self.editor_open = false;
+        self.bulk_open = false;
     }
     pub fn invalidate(&mut self) {
         self.dirty = true;
@@ -89,7 +114,79 @@ impl Catalog {
     pub fn annotation(&self, path: &Path) -> Option<&Annotation> {
         self.annotations.get(path)
     }
+    pub fn can_edit(&self) -> bool {
+        self.ready && !self.bulk_busy
+    }
+    pub fn open_bulk(&mut self, paths: Vec<PathBuf>) {
+        if self.bulk_busy {
+            self.bulk_open = true;
+            return;
+        }
+        self.editor_open = false;
+        self.editor_path = None;
+        self.bulk_paths = paths;
+        self.bulk_paths.sort();
+        self.bulk_paths.dedup();
+        self.bulk_favorite = None;
+        self.bulk_tags.clear();
+        self.bulk_remove_tags = false;
+        self.bulk_error = None;
+        self.bulk_result = None;
+        self.bulk_preview_dirty = true;
+        self.bulk_open = !self.bulk_paths.is_empty();
+    }
+    fn bulk_edit(&self) -> CatalogEdit {
+        let mut tags: Vec<_> = self
+            .bulk_tags
+            .split(',')
+            .map(str::trim)
+            .filter(|tag| !tag.is_empty())
+            .map(str::to_owned)
+            .collect();
+        tags.sort();
+        tags.dedup();
+        CatalogEdit {
+            favorite: self.bulk_favorite,
+            tags,
+            remove_tags: self.bulk_remove_tags,
+        }
+    }
+    #[cfg(feature = "capture")]
+    pub fn capture_bulk(&mut self, paths: Vec<PathBuf>) {
+        self.open_bulk(paths);
+        self.bulk_tags = "colección-demo".into();
+        self.bulk_favorite = Some(true);
+        if std::env::var("RASTERA_CAPTURE_BULK").as_deref() == Ok("apply") {
+            self.apply_bulk();
+        }
+    }
+    fn apply_bulk(&mut self) {
+        if !self.can_edit() {
+            return;
+        }
+        let edit = self.bulk_edit();
+        if let Err(error) = edit.apply(&Annotation::default()) {
+            self.bulk_error = Some(error.to_string());
+            return;
+        }
+        match self.worker.request(CatalogCommand::Edit {
+            generation: self.generation,
+            paths: self.bulk_paths.clone(),
+            edit,
+        }) {
+            Ok(()) => {
+                self.bulk_busy = true;
+                self.bulk_error = None;
+                self.bulk_result = None;
+            }
+            Err(error) => self.bulk_error = Some(error.to_string()),
+        }
+    }
     pub fn open_editor(&mut self) {
+        if self.bulk_busy {
+            return;
+        }
+        self.bulk_open = false;
         self.editor_path = None;
         self.editor_open = true;
     }
@@ -122,6 +219,17 @@ impl Catalog {
     }
     pub fn receive(&mut self) {
         while let Some(event) = self.worker.try_recv() {
+            self.bulk_preview_dirty = true;
+            if event.edited {
+                self.bulk_busy = false;
+                match &event.result {
+                    Ok(records) => {
+                        self.bulk_result = Some(records.len());
+                        self.bulk_error = None;
+                    }
+                    Err(error) => self.bulk_error = Some(error.to_string()),
+                }
+            }
             if event.generation != self.generation {
                 continue;
             }
@@ -130,7 +238,10 @@ impl Catalog {
                     self.ready = true;
                     self.error = None;
                     for (path, annotation) in records {
-                        if self.pending.contains(&path) {
+                        if event.edited {
+                            self.pending.remove(&path);
+                            self.annotations.insert(path, annotation);
+                        } else if self.pending.contains(&path) {
                             if self.annotations.get(&path) == Some(&annotation) {
                                 self.pending.remove(&path);
                             }
@@ -149,14 +260,20 @@ impl Catalog {
             }
         }
     }
-    pub fn save_metadata(&mut self, path: &Path, info: &ImageInfo) {
+    pub fn save_metadata(&mut self, path: &Path, info: &ImageInfo) -> bool {
+        if self.bulk_busy {
+            return false;
+        }
         let mut annotation = self.annotations.get(path).cloned().unwrap_or_default();
         annotation.width = Some(info.width);
         annotation.height = Some(info.height);
         annotation.format = Some(info.kind.to_string());
-        self.save(path.to_path_buf(), annotation, Some(info.clone()));
+        self.save(path.to_path_buf(), annotation, Some(info.clone()))
     }
     fn save(&mut self, path: PathBuf, annotation: Annotation, info: Option<ImageInfo>) -> bool {
+        if self.bulk_busy {
+            return false;
+        }
         if let Err(error) = self.worker.request(CatalogCommand::Save {
             generation: self.generation,
             path: path.clone(),
@@ -169,8 +286,216 @@ impl Catalog {
             self.pending.insert(path.clone());
             self.annotations.insert(path, annotation);
             self.dirty = true;
+            self.bulk_preview_dirty = true;
             true
         }
+    }
+
+    pub fn bulk_editor(&mut self, ctx: &egui::Context) {
+        let mut open = self.bulk_open;
+        let mut close = false;
+        egui::Window::new("Organizar selección")
+            .open(&mut open)
+            .collapsible(false)
+            .default_width(500.0)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("bulk-organization")
+                    .max_height((ctx.viewport_rect().height() - 190.0).max(140.0))
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} imágenes en la selección",
+                                self.bulk_paths.len()
+                            ))
+                            .strong(),
+                        );
+                        if self.bulk_preview_dirty {
+                            let visible: HashSet<_> =
+                                self.filtered.iter().map(|entry| &entry.path).collect();
+                            self.bulk_hidden = self
+                                .bulk_paths
+                                .iter()
+                                .filter(|path| !visible.contains(path))
+                                .count();
+                        }
+                        if self.bulk_hidden > 0 {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "Incluye {} fuera del filtro actual",
+                                    self.bulk_hidden
+                                ))
+                                .small()
+                                .color(crate::theme::MUTED),
+                            );
+                        }
+                        let mut changed = false;
+                        ui.add_enabled_ui(self.can_edit(), |ui| {
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                ui.label("Favoritas");
+                                egui::ComboBox::from_id_salt("bulk-favorite")
+                                    .selected_text(match self.bulk_favorite {
+                                        None => "Sin cambios",
+                                        Some(true) => "Marcar como favoritas",
+                                        Some(false) => "Quitar de favoritas",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        for (value, label) in [
+                                            (None, "Sin cambios"),
+                                            (Some(true), "Marcar como favoritas"),
+                                            (Some(false), "Quitar de favoritas"),
+                                        ] {
+                                            changed |= ui
+                                                .selectable_value(
+                                                    &mut self.bulk_favorite,
+                                                    value,
+                                                    label,
+                                                )
+                                                .changed();
+                                        }
+                                    });
+                            });
+                            ui.horizontal(|ui| {
+                                egui::ComboBox::from_id_salt("bulk-tags-mode")
+                                    .selected_text(if self.bulk_remove_tags {
+                                        "Retirar etiquetas"
+                                    } else {
+                                        "Añadir etiquetas"
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        changed |= ui
+                                            .selectable_value(
+                                                &mut self.bulk_remove_tags,
+                                                false,
+                                                "Añadir etiquetas",
+                                            )
+                                            .changed();
+                                        changed |= ui
+                                            .selectable_value(
+                                                &mut self.bulk_remove_tags,
+                                                true,
+                                                "Retirar etiquetas",
+                                            )
+                                            .changed();
+                                    });
+                            });
+                            changed |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.bulk_tags)
+                                        .char_limit(4096)
+                                        .hint_text("Ej. viaje, aprobada")
+                                        .desired_width(f32::INFINITY),
+                                )
+                                .changed();
+                            ui.label(
+                                egui::RichText::new(
+                                    "Separa con comas. Las demás etiquetas se conservan.",
+                                )
+                                .small()
+                                .color(crate::theme::MUTED),
+                            );
+                        });
+                        if changed {
+                            self.bulk_preview_dirty = true;
+                            self.bulk_error = None;
+                            self.bulk_result = None;
+                        }
+                        if self.bulk_preview_dirty {
+                            let edit = self.bulk_edit();
+                            self.bulk_preview =
+                                self.bulk_paths.iter().try_fold(0, |count, path| {
+                                    let before =
+                                        self.annotations.get(path).cloned().unwrap_or_default();
+                                    let after = edit.apply(&before).map_err(|error| {
+                                        format!(
+                                            "{}: {error}",
+                                            path.file_name().unwrap_or_default().to_string_lossy()
+                                        )
+                                    })?;
+                                    Ok(count + usize::from(before != after))
+                                });
+                            self.bulk_preview_dirty = false;
+                        }
+                        ui.add_space(8.0);
+                        if self.bulk_busy {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Guardando organización…");
+                            });
+                        } else if let Some(count) = self.bulk_result {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(149, 207, 166),
+                                format!("Organización guardada para {count} imágenes"),
+                            );
+                        } else {
+                            match &self.bulk_preview {
+                                Ok(0) => {
+                                    ui.label(
+                                        egui::RichText::new("No hay cambios que guardar")
+                                            .color(crate::theme::MUTED),
+                                    );
+                                }
+                                Ok(count) => {
+                                    ui.label(format!("Vista previa: {count} imágenes cambiarán"));
+                                }
+                                Err(error) => {
+                                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                                }
+                            }
+                        }
+                        if let Some(error) = &self.bulk_error {
+                            ui.colored_label(egui::Color32::LIGHT_RED, error);
+                        }
+                        egui::CollapsingHeader::new("Imágenes incluidas").show(ui, |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("bulk-paths")
+                                .max_height(100.0)
+                                .show_rows(ui, 22.0, self.bulk_paths.len(), |ui, rows| {
+                                    for index in rows {
+                                        let path = &self.bulk_paths[index];
+                                        ui.add(
+                                            egui::Label::new(
+                                                path.file_name()
+                                                    .unwrap_or_default()
+                                                    .to_string_lossy(),
+                                            )
+                                            .truncate(),
+                                        )
+                                        .on_hover_text(crate::theme::display_path(path));
+                                    }
+                                });
+                        });
+                    });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.can_edit() && matches!(self.bulk_preview, Ok(count) if count > 0),
+                            crate::theme::primary("Guardar organización"),
+                        )
+                        .clicked()
+                    {
+                        self.apply_bulk();
+                    }
+                    close = ui
+                        .button(if self.bulk_busy {
+                            "Ocultar panel"
+                        } else {
+                            "Cerrar"
+                        })
+                        .clicked();
+                });
+                ui.label(
+                    egui::RichText::new(
+                        "Se comprueba y guarda toda la selección. Los originales se conservan.",
+                    )
+                    .small()
+                    .color(crate::theme::MUTED),
+                );
+            });
+        self.bulk_open = open && !close;
     }
 
     pub fn filters(&mut self, ui: &mut egui::Ui, entries: &[FolderEntry]) {
@@ -218,6 +543,7 @@ impl Catalog {
             }
         });
         if self.dirty {
+            self.bulk_preview_dirty = true;
             let search = self.search.to_lowercase();
             self.filtered = entries
                 .iter()
@@ -328,7 +654,7 @@ impl Catalog {
                     ui.separator();
                     ui.horizontal(|ui| {
                         if ui
-                            .add_enabled(self.ready, crate::theme::primary("Guardar cambios"))
+                            .add_enabled(self.can_edit(), crate::theme::primary("Guardar cambios"))
                             .clicked()
                         {
                             let mut annotation =
@@ -359,6 +685,93 @@ impl Catalog {
 mod tests {
     use super::*;
     use rastera_core::{CatalogBackend, FileStamp, ImageKind};
+    fn settle_bulk(catalog: &mut Catalog) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while catalog.bulk_busy {
+            catalog.receive();
+            assert!(std::time::Instant::now() < deadline, "Bulk edit timeout");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+    #[test]
+    fn selection_edit_waits_for_accepted_writes_and_defers_metadata_until_acknowledged() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("catalog.sqlite");
+        let paths = vec![dir.path().join("first.png"), dir.path().join("second.png")];
+        let mut catalog = Catalog::for_test(db_path.clone());
+        catalog.ready = true;
+        catalog.save(
+            paths[0].clone(),
+            Annotation {
+                tags: vec!["individual".into()],
+                ..Default::default()
+            },
+            None,
+        );
+        catalog.open_bulk(paths.clone());
+        catalog.bulk_tags = "aprobada".into();
+        catalog.bulk_favorite = Some(true);
+        catalog.apply_bulk();
+        assert!(catalog.bulk_busy);
+        let info = ImageInfo {
+            width: 90,
+            height: 60,
+            kind: ImageKind::Png,
+            stamp: FileStamp {
+                length: 200,
+                modified: None,
+            },
+            has_color_profile: false,
+        };
+        assert!(!catalog.save_metadata(&paths[0], &info));
+        settle_bulk(&mut catalog);
+        assert_eq!(catalog.bulk_result, Some(2));
+        assert!(catalog.bulk_error.is_none());
+        assert_eq!(
+            catalog.annotations[&paths[0]].tags,
+            ["aprobada", "individual"]
+        );
+        assert_eq!(catalog.annotations[&paths[1]].tags, ["aprobada"]);
+        assert!(catalog.pending.is_empty());
+        assert!(catalog.save_metadata(&paths[0], &info));
+        drop(catalog);
+        let mut db = SqliteCatalog::open(&db_path).unwrap();
+        let records = db.load(&paths).unwrap();
+        assert!(records.iter().all(|(_, annotation)| annotation.favorite));
+        assert_eq!(records[0].1.tags, ["aprobada", "individual"]);
+        assert_eq!(
+            (records[0].1.width, records[0].1.height),
+            (Some(90), Some(60))
+        );
+    }
+    #[test]
+    fn changing_folder_preserves_accepted_bulk_edit_without_polluting_new_generation() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("catalog.sqlite");
+        let path = dir.path().join("first.png");
+        let mut catalog = Catalog::for_test(db_path.clone());
+        catalog.reset(1);
+        catalog.ready = true;
+        catalog.open_bulk(vec![path.clone()]);
+        catalog.bulk_tags = "pendiente".into();
+        catalog.apply_bulk();
+        catalog.reset(2);
+        assert!(!catalog.bulk_open);
+        settle_bulk(&mut catalog);
+        assert!(catalog.annotations.is_empty());
+        assert!(!catalog.ready);
+        assert_eq!(catalog.bulk_result, Some(1));
+        drop(catalog);
+        assert_eq!(
+            SqliteCatalog::open(&db_path)
+                .unwrap()
+                .load(&[path])
+                .unwrap()[0]
+                .1
+                .tags,
+            ["pendiente"]
+        );
+    }
 
     #[test]
     fn filtered_library_sorts_names_and_keeps_order_when_filters_reset() {

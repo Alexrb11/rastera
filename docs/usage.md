@@ -22,11 +22,15 @@ Actualizar, o F5, vuelve a leer la carpeta y limpia las texturas y la selección
 
 La caché de miniaturas está junto al catálogo, en thumbnails-v1. Se puede borrar con la aplicación cerrada sin perder favoritos ni etiquetas. Su objetivo es 2 GiB. Se revisa al comenzar, después de escribir 16 MiB de registros y al atender una petición si han pasado 60 segundos desde la última revisión. Leer miniaturas guardadas no provoca recorridos por número de peticiones. El margen de escrituras entre revisiones es 16 MiB más un registro como máximo por trabajador; varias instancias no comparten un límite estricto. Solo se ordenan y expulsan las entradas antiguas cuando se supera la cuota. Las entradas dañadas se regeneran; si la caché falla, la imagen se carga desde el original. La revisión comprueba la cancelación mientras enumera y elimina.
 
-## Organizar
-
 En Biblioteca, las flechas recorren las miniaturas según las columnas visibles. Home y End van al primer y último resultado; RePág y AvPág avanzan por páginas y desplazan la cuadrícula para mantener visible la imagen enfocada. Shift extiende un rango; Ctrl+flechas mueve el foco sin cambiar la selección y Espacio añade o retira la imagen enfocada. Enter abre esa imagen en Visor. Puedes llegar a la cuadrícula con Tab o pulsando una miniatura. Los atajos de navegación quedan suspendidos al escribir en búsqueda y al abrir un panel auxiliar.
 
+## Organizar
+
 Selecciona una imagen y pulsa Propiedades → Editar organización. Puedes marcar Favorita directamente en Propiedades. Marca Favorita, escribe etiquetas separadas por comas y pulsa Guardar cambios. Se admiten hasta 32 etiquetas de 64 caracteres; se recortan espacios y se eliminan duplicados. El panel muestra las etiquetas y las miniaturas identifican los favoritos.
+
+Para varias imágenes, selecciona el grupo y pulsa Organizar…, Herramientas → Organizar selección o Ctrl+Shift+T en Biblioteca. El panel toma una copia de esa selección, incluyendo las imágenes ocultas por filtros. Puedes dejar Favoritas sin cambios, marcar todas o retirarlas, y añadir o retirar las etiquetas indicadas sin reemplazar las demás. Retirar compara el texto exacto de las etiquetas, incluidas mayúsculas. La vista previa cuenta las imágenes que cambiarían y permite revisar las rutas incluidas.
+
+Guardar organización lee los datos actuales y aplica toda la selección en una transacción de SQLite, fuera del hilo de interfaz. Si una imagen superaría 32 etiquetas, o SQLite falla, no se guarda ninguna de las modificaciones de esa operación. Los archivos originales se conservan. Durante el guardado puedes ocultar el panel o cambiar de carpeta; la escritura aceptada termina y el estado se puede volver a abrir desde la barra inferior. La edición individual espera mientras se guarda el grupo. Los metadatos pendientes se guardan después de recibir las nuevas anotaciones, conservando sus etiquetas.
 
 Ctrl+F enfoca la búsqueda, que filtra por nombre o etiqueta sin distinguir mayúsculas. También puedes filtrar por favoritos y extensión de archivo. Los filtros actúan sobre la carpeta abierta.
 
