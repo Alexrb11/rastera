@@ -1,6 +1,6 @@
 # Plan de desarrollo de Rastera
 
-Este plan lleva la arquitectura desde el prototipo hasta una primera aplicación útil en Windows. Las fases se completan mediante criterios observables, no por una fecha estimada.
+Este plan lleva la arquitectura desde el prototipo hasta una aplicación útil, con Windows como plataforma inicial y soporte experimental preparado para Linux y macOS. Las fases se completan mediante criterios observables, no por una fecha estimada.
 
 El avance inicial incluye workspace, CI, visor nativo con resolución completa por mosaicos, navegación progresiva por carpetas, cuadrícula virtualizada y selección múltiple. Las miniaturas tienen una caché LRU en GPU y una caché persistente acotada en disco, con un trabajador cancelable que comparte memoria con el visor. Se ha comprobado el renderizado y publicado una primera medición de release en Windows con 1.000 y 10.000 PNG sintéticos y un original de 9 megapíxeles. Las fases siguen abiertas: faltan validación de accesibilidad, mediciones con fotografías variadas e interacción y descubrimiento de diarios al iniciar. El catálogo local ya guarda favoritos, etiquetas y dimensiones, con búsqueda y filtros en la carpeta abierta. La cuadrícula añade navegación por teclado con selección por rango y foco protegido frente a campos de texto y paneles. Organizar selección combina o retira etiquetas y aplica favoritos con guardado atómico; hay pruebas de rollback, conservación de metadatos y cambios de generación. La carpeta abierta ya se observa y reconcilia automáticamente, con revisión periódica de respaldo, conservación de estado y pruebas nativas de altas, cambios, renombrados, retiradas y recuperación del directorio. Continúan pendientes el seguimiento de identidad tras renombrados externos y la validación con lectores de pantalla.
 
@@ -75,7 +75,11 @@ Criterios de aceptación:
 
 ## Fase 6 Distribución y ampliaciones
 
-Preparar paquetes de Windows, documentación de uso y controles de dependencias. Medir mejoras antes de añadir optimizaciones más complejas. Después se podrán añadir una CLI, otras plataformas y nuevos formatos.
+Implementado en la preparación de alpha.3: paquetes Windows, tar.gz Linux x86-64 con integración por usuario opcional, bundles macOS Intel/Apple Silicon con icono y firma ad-hoc, directorios de datos por plataforma y atajos Cmd en macOS. Los workflows preparan pruebas y empaquetado de las cuatro plataformas. Linux usa Ubuntu 22.04/glibc 2.35 como base; macOS declara 13 como mínimo y la matriz compila sobre 15. La release pública de referencia sigue siendo alpha.2 hasta publicar la siguiente.
+
+Pendiente antes de ampliar la recomendación: Windows limpio, escritorios Linux X11/Wayland con distintos controladores, macOS 13 y otras versiones en Intel/Apple Silicon, diálogos, permisos, Retina/escalado y accesibilidad. Pasar CI o comprobar que un proceso sigue vivo no cierra esos criterios. Developer ID y notarización, eventos de documentos de Finder, formatos instalables de sistema y otras arquitecturas Linux requieren trabajo posterior.
+
+Preparar y validar paquetes, documentación de uso y controles de dependencias. Medir mejoras antes de añadir optimizaciones más complejas. Después se podrán añadir una CLI más completa y nuevos formatos.
 
 Criterios de aceptación:
 

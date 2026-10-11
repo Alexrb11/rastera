@@ -6,6 +6,8 @@ Las secciones de implementación actual describen el código disponible. El rest
 
 La ventana compone paneles independientes de egui: menús y ubicación arriba, estado abajo, Propiedades ajustable a la derecha y Biblioteca o Visor en el centro. El área central usa el espacio restante sin fijar una altura de trabajo. Bajo 980 puntos, Propiedades pasa a una ventana desplazable. En Windows se utiliza Segoe UI si está instalada; las otras plataformas conservan la fuente de respaldo de egui.
 
+Los atajos usan `Modifiers::COMMAND`, que egui-winit traduce a Ctrl en Windows/Linux y Cmd en macOS. Menús, tooltips y ayuda muestran el modificador del sistema. Los diálogos de macOS pasan por el despacho al hilo de AppKit que proporciona RFD. Linux usa el portal de archivos del escritorio y Zenity como respaldo; requiere una sesión D-Bus y un backend FileChooser. Abrir archivos mediante eventos de Finder necesita un delegado AppKit adicional y queda pendiente; el bundle no declara asociaciones de documentos.
+
 Biblioteca separa filtros de acciones de selección. El catálogo recalcula resultados y orden por nombre cuando cambian los datos; no ordena durante cada frame. El visor abierto desde Biblioteca usa esa misma lista filtrada y ordenada. La selección conserva las entradas ocultas al filtrar y comunica su número al exportar. Marcar Favorita desde Propiedades reutiliza las escrituras asíncronas y conserva las etiquetas. Las dimensiones de las miniaturas proceden de los píxeles ya orientados.
 
 La exportación muestra configuración, revisión y resultados con botones fuera del contenido desplazable. Las opciones se contraen al revisar y quedan bloqueadas mientras se procesa o conserva un resultado. Esc oculta las ventanas auxiliares sin cancelar el lote. Las rutas visibles omiten el prefijo técnico de Windows; la identidad de archivos y las operaciones siguen utilizando PathBuf sin alterar su representación.
@@ -26,7 +28,15 @@ Implementado: diarios de versión 2 con receta estructurada, rutas sin pérdida 
 
 ## Implementación actual del catálogo
 
-SQLite se abre y utiliza exclusivamente en un trabajador con colas de 32 mensajes. El cierre drena las escrituras aceptadas. Se guarda en el directorio de datos de usuario: en Windows, %LOCALAPPDATA%\Rastera\catalog.sqlite. Las claves de ruta usan UTF-16 sin pérdida en Windows y bytes en Unix; el texto visible no identifica los archivos.
+SQLite se abre y utiliza exclusivamente en un trabajador con colas de 32 mensajes. El cierre drena las escrituras aceptadas. Un adaptador compartido resuelve catálogo y caché sin crear ni mover archivos al resolver la ruta. Las claves de ruta usan UTF-16 sin pérdida en Windows y bytes en Unix; el texto visible no identifica los archivos.
+
+| Sistema | Catálogo | Caché de miniaturas |
+| --- | --- | --- |
+| Windows | `%LOCALAPPDATA%\Rastera\catalog.sqlite` | `%LOCALAPPDATA%\Rastera\thumbnails-v1` |
+| Linux | `$XDG_DATA_HOME/Rastera/catalog.sqlite` | `$XDG_CACHE_HOME/Rastera/thumbnails-v1` |
+| macOS | `$HOME/Library/Application Support/Rastera/catalog.sqlite` | `$HOME/Library/Caches/Rastera/thumbnails-v1` |
+
+En Linux, XDG vacío, ausente o relativo usa `$HOME/.local/share` para datos y `$HOME/.cache` para caché; HOME debe ser absoluto. En macOS, si falta el catálogo nuevo y existe el de una build anterior en la ruta XDG de datos o su respaldo, se conserva esa ubicación sin migrarlo. La caché de macOS usa siempre Library/Caches. Sustituir un paquete no sustituye estos directorios. Los diarios de lotes siguen en el destino elegido.
 
 Organizar selección envía un solo comando Edit al trabajador del catálogo. El adaptador abre una transacción inmediata, lee las anotaciones actuales, combina o retira etiquetas y actualiza exclusivamente favoritos y etiquetas, sin alterar dimensiones ni formato. Los duplicados de ruta se eliminan con claves sin pérdida. Se admiten entre 1 y 10.000 rutas. Un error de validación o escritura revierte la transacción completa. El esquema v1 permanece compatible.
 
@@ -260,6 +270,14 @@ La configuración se guarda con un esquema versionado y publicación segura. El 
 Los errores distinguirán archivo no compatible, datos corruptos, acceso denegado, entrada modificada, presupuesto insuficiente, disco lleno y conflicto de destino. La UI muestra contexto y posibles acciones. Los fallos de trabajadores no deben hacer desaparecer silenciosamente una tarea pendiente.
 
 El procesamiento se realiza localmente y no requiere cuenta ni telemetría. Los logs normales evitan rutas completas y contenido de metadatos personales; un diagnóstico detallado será una opción visible. Los decodificadores procesan datos externos y deberán mantenerse actualizados. Rust reduce ciertas clases de errores, pero el proceso inicial no estará aislado mediante sandbox y las dependencias pueden incluir código inseguro o nativo.
+
+## Distribución experimental de Linux y macOS
+
+La preparación de alpha.3 añade un tar.gz Linux x86-64 y bundles `.app` separados para macOS arm64 y x64. Linux se compila sobre Ubuntu 22.04, con glibc mínima 2.35 y renderizado Vulkan; macOS declara 13 como mínimo de despliegue y usa Metal. Los runners macOS 15 no prueban ese mínimo. El paquete incluye tutorial, iconos, avisos de dependencias y biblioteca estándar de Rust, y metadatos de versión, target, commit y huellas. La característica `capture` no se distribuye.
+
+El instalador Linux por usuario añade un launcher y los iconos a ubicaciones XDG sin permisos de administrador. La opción de asociaciones añade entradas a Open With sin establecer predeterminados. macOS incluye Info.plist e ICNS, firma ad-hoc para integridad y ningún registro de tipos de documento. Developer ID y notarización no están preparados.
+
+La verificación distingue integridad y arquitectura del paquete, ejecución de `--build-info`, smoke gráfico Linux en el entorno registrado y recorrido manual de usuario. Ninguna de esas comprobaciones aislada acredita todos los flujos de escritorio, las protecciones de macOS o diferentes GPU. Consulta [la publicación](releasing.md) y las guías de [Linux](install-linux.md) y [macOS](install-macos.md).
 
 ## Validación y evolución
 

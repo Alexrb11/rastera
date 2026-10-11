@@ -4,6 +4,8 @@ La interfaz separa los menús Archivo, Ver, Herramientas y Ayuda, la ubicación 
 
 Herramientas → Diagnóstico de rendimiento abre los contadores de memoria, cargas y caché de esta sesión. Consulta [cómo medir recursos y tiempos](performance.md) para distinguir las estimaciones internas de la RAM del proceso y repetir las mediciones.
 
+Los atajos escritos como Ctrl en esta guía usan **Cmd en macOS**, incluido clic, búsqueda, selección y exportación. La ayuda y los menús de Rastera muestran la combinación del sistema; en macOS se presenta Shift+Cmd para las combinaciones con Shift. Las teclas de función o Home/End pueden requerir Fn según el teclado, y todas las acciones principales también están en los menús. Consulta los requisitos de [Windows](https://github.com/Alexrb11/rastera/blob/main/docs/install-windows.md), [Linux](https://github.com/Alexrb11/rastera/blob/main/docs/install-linux.md) o [macOS](https://github.com/Alexrb11/rastera/blob/main/docs/install-macos.md) antes de instalar.
+
 ## Navegar y seleccionar
 
 Abre una carpeta desde Archivo, el botón, Ctrl+Shift+O, arrastrándola a la ventana o pasándola como argumento de inicio. Archivo → Abrir una ruta, F4 y la barra de ubicación permiten introducir una ruta; se aceptan rutas pegadas entre comillas. Ctrl+O abre una imagen. Ver carpeta permite explorar la carpeta de un archivo abierto directamente. La flecha hacia arriba abre la carpeta superior. La cuadrícula carga las miniaturas visibles; no recorre subcarpetas.
@@ -40,7 +42,7 @@ Guardar organización lee los datos actuales y aplica toda la selección en una 
 
 Ctrl+F enfoca la búsqueda, que filtra por nombre o etiqueta sin distinguir mayúsculas. También puedes filtrar por favoritos y extensión de archivo. Los filtros actúan sobre la carpeta abierta.
 
-En Windows, la organización vive en %LOCALAPPDATA%\Rastera\catalog.sqlite, junto a los archivos auxiliares de SQLite. No se escribe en las imágenes. Las rutas identifican las anotaciones; mover o renombrar un archivo externamente crea una ruta distinta.
+La organización vive junto a los archivos auxiliares de SQLite, fuera del paquete de la aplicación. En Windows, el catálogo está en `%LOCALAPPDATA%\Rastera\catalog.sqlite`; en Linux, en `$XDG_DATA_HOME/Rastera/catalog.sqlite` o `$HOME/.local/share/Rastera/catalog.sqlite`; en macOS, en `$HOME/Library/Application Support/Rastera/catalog.sqlite`. Una build macOS anterior puede conservar su catálogo en la ubicación antigua cuando no existe el nuevo. Las [guías de instalación](../README.md#probar-rastera) detallan los respaldos y la caché. No se escribe en las imágenes. Las rutas identifican las anotaciones; mover o renombrar un archivo externamente crea una ruta distinta.
 
 Si falla el catálogo, la aplicación muestra el error y permite continuar usando carpeta y visor. No se modifica una base de una versión de esquema más reciente.
 

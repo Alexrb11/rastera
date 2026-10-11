@@ -1,6 +1,6 @@
 # Rastera · Primera alpha para Windows
 
-Rastera es un visor y organizador local de imágenes con exportación por lotes. Esta versión es preliminar y busca feedback. El paquete se dirige a Windows 10/11 x64; la comprobación local se ha realizado en Windows 11. Linux, macOS y Windows ARM no tienen todavía un paquete validado.
+Rastera es un visor y organizador local de imágenes con exportación por lotes. Esta versión es preliminar y busca feedback. El paquete se dirige a Windows 10/11 x64; la comprobación local se ha realizado en Windows 11. La alpha.3 prepara paquetes experimentales para [Linux](https://github.com/Alexrb11/rastera/blob/main/docs/install-linux.md) y [macOS](https://github.com/Alexrb11/rastera/blob/main/docs/install-macos.md), con validación de escritorio pendiente. Windows ARM no tiene un paquete nativo.
 
 ## Abrir la aplicación
 
