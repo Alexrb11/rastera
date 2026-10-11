@@ -45,3 +45,5 @@ Usa [las incidencias del repositorio](https://github.com/Alexrb11/rastera/issues
 El ZIP tiene un archivo `.sha256` separado. Puedes obtener su suma con `Get-FileHash .\rastera-*.zip -Algorithm SHA256` y compararla con ese archivo. La suma comprueba integridad, no identidad del editor.
 
 Rastera se distribuye bajo MIT. Las dependencias y fuentes conservan sus condiciones en `THIRD-PARTY-NOTICES.txt` y `dependency-licenses.json`.
+
+Los avisos de la biblioteca estándar están en RUST-STANDARD-LIBRARY-NOTICES.html; GNU incluye además MINGW-RUNTIME-NOTICES.txt. La distribución MSVC enlaza su runtime C estáticamente.

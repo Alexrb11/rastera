@@ -6,7 +6,7 @@ Rastera tiene una interfaz de escritorio nativa y trabaja sobre carpetas locales
 
 ## Probarla en Windows
 
-La primera versión es `0.1.0-alpha.1`, una alpha para Windows 10/11 x64. Las alphas publicadas se encuentran en [Releases](https://github.com/Alexrb11/rastera/releases). Descarga el ZIP portable y su SHA-256, extráelo y abre `rastera.exe`; no necesitas Rust. Consulta la [instalación y límites](docs/install-windows.md) y el [tutorial ilustrado](docs/tutorial/index.html).
+La primera versión es `0.1.0-alpha.2`, una alpha para Windows 10/11 x64. Las alphas publicadas se encuentran en [Releases](https://github.com/Alexrb11/rastera/releases). Descarga el ZIP portable y su SHA-256, extráelo y abre `rastera.exe`; no necesitas Rust. Consulta la [instalación y límites](docs/install-windows.md) y el [tutorial ilustrado](docs/tutorial/index.html).
 
 El ejecutable no está firmado. La prueba en un Windows limpio y la validación completa de accesibilidad están pendientes. Linux y macOS todavía no tienen paquetes soportados. El catálogo y la caché se guardan fuera de la carpeta del ejecutable, en `%LOCALAPPDATA%\Rastera`.
 

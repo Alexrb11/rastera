@@ -2,14 +2,14 @@
 
 ## Compilar y empaquetar
 
-Desde un checkout limpio, con Rust 1.95 o posterior, Python 3.11 o posterior y Git:
+Desde un checkout limpio, con Rust 1.95 o posterior, Python 3.11 o posterior, Git y el componente rust-docs:
 
 ```powershell
 pwsh -File scripts/package-windows.ps1 -Target x86_64-pc-windows-msvc
-pwsh -File scripts/verify-portable.ps1 -Archive work/releases/rastera-0.1.0-alpha.1-windows-x64-msvc.zip -ReportPath work/releases/smoke.json
+pwsh -File scripts/verify-portable.ps1 -Archive work/releases/rastera-0.1.0-alpha.2-windows-x64-msvc.zip -ReportPath work/releases/smoke.json
 ```
 
-GNU también está admitido mediante `-Target x86_64-pc-windows-gnu`. MSVC necesita las herramientas de C++ y el SDK de Windows; GNU, MinGW. No se empaqueta una build con `capture`. El empaquetador verifica la versión, el formato PE x64 y las licencias del grafo de dependencias. Conserva el commit, compilador y huella del ejecutable; falla si ya existe el ZIP. Usa otra carpeta de salida para repetir una prueba.
+GNU también está admitido mediante `-Target x86_64-pc-windows-gnu`. MSVC enlaza su runtime C estáticamente con target explícito y rechaza RUSTFLAGS globales durante el empaquetado. MSVC necesita las herramientas de C++ y el SDK de Windows; GNU, MinGW. No se empaqueta una build con `capture`. El empaquetador verifica la versión, el formato PE x64 y las licencias del grafo de dependencias. Conserva el commit, compilador y huella del ejecutable; falla si ya existe el ZIP. Usa otra carpeta de salida para repetir una prueba.
 
 `verify-portable.ps1` comprueba las huellas, extrae a una carpeta temporal nueva y ejecuta la aplicación con un perfil aislado y PATH limitado al sistema. Conserva la extracción para inspección; imprime su ruta. Solo detiene el proceso que ha iniciado. La creación del catálogo y un proceso vivo prueban el arranque, pero no garantizan el renderizado ni la corrección de todos los flujos.
 
@@ -37,8 +37,8 @@ El workflow **Windows alpha** se ejecuta al publicar un tag `v*` o manualmente d
 Para publicar, comprueba que la versión en Cargo.toml coincide con el tag, revisa `docs/releases/<version>.md`, el resultado de CI y las pruebas anteriores. Después crea y sube el tag:
 
 ```powershell
-git tag -a v0.1.0-alpha.1 -m "Rastera 0.1.0-alpha.1"
-git push origin v0.1.0-alpha.1
+git tag -a v0.1.0-alpha.2 -m "Rastera 0.1.0-alpha.2"
+git push origin v0.1.0-alpha.2
 ```
 
 El tag crea una **release preliminar en borrador**, con ZIP y SHA-256. Revisa sus archivos y resultados antes de publicarla desde Releases. El borrador permite preparar la distribución aunque la prueba de Windows limpio siga pendiente; el texto de la alpha debe reflejar esa limitación si se publica antes.

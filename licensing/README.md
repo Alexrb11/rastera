@@ -9,3 +9,5 @@ Las expresiones SPDX aceptadas están enumeradas en el script. Una expresión nu
 Algunos paquetes omiten sus textos de licencia en el archivo de crates.io. `upstream-sources.json` registra las URL fijadas al commit de `.cargo_vcs_info.json`, archivos y huellas recuperados del repositorio oficial. Los textos se conservan aquí para generar releases sin descargarlos durante el empaquetado. Cuando una dependencia cambie de revisión, se debe actualizar y revisar su procedencia.
 
 El ZIP incluye `LICENSE`, `THIRD-PARTY-NOTICES.txt` y `dependency-licenses.json`. El inventario es una comprobación de procedencia y cobertura de avisos, no una auditoría legal completa de todo el código fuente.
+
+Los runtimes de compilación se documentan en [toolchain](toolchain/README.md). El ZIP conserva los avisos de la biblioteca estándar del compilador utilizado y de MinGW-w64 en GNU.

@@ -1,2 +1,3 @@
 # Upstream notices are verified byte-for-byte against their recorded SHA-256.
 licensing/upstream/** -text
+licensing/toolchain/** -text

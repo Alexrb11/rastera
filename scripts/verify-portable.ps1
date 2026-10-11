@@ -28,11 +28,14 @@ try {
 $taskFolders = @(Get-ChildItem -LiteralPath $taskRoot -Directory)
 if ($taskFolders.Count -ne 1) { throw 'Se esperaba una sola carpeta de aplicación.' }
 $taskPackage = $taskFolders[0].FullName
-foreach ($taskRequired in @('rastera.exe', 'LICENSE', 'LEEME.md', 'BUILD-INFO.json', 'THIRD-PARTY-NOTICES.txt', 'dependency-licenses.json', 'docs/tutorial/index.html')) {
+foreach ($taskRequired in @('rastera.exe', 'LICENSE', 'LEEME.md', 'BUILD-INFO.json', 'THIRD-PARTY-NOTICES.txt', 'RUST-STANDARD-LIBRARY-NOTICES.html', 'dependency-licenses.json', 'docs/tutorial/index.html')) {
     if (!(Test-Path -LiteralPath (Join-Path $taskPackage $taskRequired) -PathType Leaf)) { throw "Falta $taskRequired" }
 }
 $taskInfo = Get-Content -LiteralPath (Join-Path $taskPackage 'BUILD-INFO.json') -Raw | ConvertFrom-Json
 $taskExe = Join-Path $taskPackage 'rastera.exe'
+if ((Get-FileHash -LiteralPath (Join-Path $taskPackage 'RUST-STANDARD-LIBRARY-NOTICES.html') -Algorithm SHA256).Hash -ne $taskInfo.rust_library_notices_sha256) { throw 'Los avisos de Rust no coinciden con su huella.' }
+if ($taskInfo.target -eq 'x86_64-pc-windows-gnu' -and !(Test-Path -LiteralPath (Join-Path $taskPackage 'MINGW-RUNTIME-NOTICES.txt'))) { throw 'Faltan los avisos del runtime MinGW.' }
+if (!$taskInfo.imported_system_dlls -or @($taskInfo.imported_system_dlls | Where-Object { $_ -match '^(vcruntime|msvcp|msvcr\d|libgcc|libstdc\+\+|libwinpthread)' }).Count) { throw 'Dependencias de runtime incompatibles con el paquete portable.' }
 if ($taskInfo.capture -ne $false -or $taskInfo.version -notmatch '^\d+\.\d+\.\d+-alpha\.\d+$' -or
     $taskInfo.source_commit -notmatch '^[a-f0-9]{40}$' -or
     (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash -ne $taskInfo.executable_sha256) {
