@@ -2,7 +2,14 @@ name: Rust
 
 on:
   push:
+    branches: ['**']
+    paths-ignore: ['**.md', 'docs/**', '.github/ISSUE_TEMPLATE/**']
   pull_request:
+    paths-ignore: ['**.md', 'docs/**', '.github/ISSUE_TEMPLATE/**']
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
