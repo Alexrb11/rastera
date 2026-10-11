@@ -19,7 +19,7 @@ Lee [la arquitectura](docs/architecture.md) y [la guía de uso](docs/usage.md). 
 
 Para una funcionalidad grande, abre primero una propuesta explicando el problema y un caso concreto de uso. Para un fallo, incluye versión, Windows y GPU, pasos, resultado esperado y resultado observado. Usa imágenes de prueba que puedas compartir y oculta rutas personales y metadatos sensibles.
 
-Trabaja en una rama propia. Agrupa los commits por funcionalidad: `feat(area): descripción`, `fix(area): descripción` o `docs(area): descripción`. Una pull request debe explicar el comportamiento resultante y cómo se comprobó. Añade pruebas de comportamiento para cambios en archivos, catálogo, memoria o concurrencia. Para cambios visuales, incluye capturas de ventana grande y compacta.
+Trabaja en una rama propia. Agrupa los commits por funcionalidad y escribe los mensajes en inglés, tanto el área como la descripción: `feat(area): description`, `fix(area): description` o `docs(area): description`. Por ejemplo: `feat(docs): add English README`. Una pull request debe explicar el comportamiento resultante y cómo se comprobó. Añade pruebas de comportamiento para cambios en archivos, catálogo, memoria o concurrencia. Para cambios visuales, incluye capturas de ventana grande y compacta.
 
 No incluyas `target/`, `work/`, catálogos personales, credenciales ni fotografías ajenas. No añadas llamadas de red al flujo de uso ni cambios sobre originales sin un diseño explícito. Los trabajadores de exportación publican en otra carpeta y conservan las salidas existentes.
 

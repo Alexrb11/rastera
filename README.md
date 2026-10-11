@@ -1,5 +1,7 @@
 # Rastera
 
+**Español** | [English](README.en.md)
+
 Visor y organizador de imágenes con herramientas por lotes, desarrollado en Rust.
 
 Rastera tiene una interfaz de escritorio nativa y trabaja sobre carpetas locales. El objetivo es navegar por bibliotecas grandes con una interfaz fluida, controlar el uso de memoria y procesar imágenes sin bloquear la navegación.
