@@ -65,6 +65,13 @@ impl Catalog {
             editor_tags: String::new(),
         }
     }
+    #[cfg(test)]
+    pub fn for_test(path: PathBuf) -> Self {
+        Self::with_worker(CatalogWorker::new(
+            move || Ok(Box::new(SqliteCatalog::open(&path)?)),
+            Arc::new(|| {}),
+        ))
+    }
     pub fn reset(&mut self, generation: u64) {
         self.generation = generation;
         self.ready = false;

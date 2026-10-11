@@ -38,6 +38,8 @@ pub struct ThumbnailGrid {
     pub organize: bool,
     pub export: bool,
     anchor: Option<PathBuf>,
+    focused: Option<PathBuf>,
+    scroll_offset: f32,
     pub density: u8,
     #[cfg(feature = "capture")]
     pub benchmark_index: Option<usize>,
@@ -65,6 +67,8 @@ impl ThumbnailGrid {
             organize: false,
             export: false,
             anchor: None,
+            focused: None,
+            scroll_offset: 0.0,
             density: 1,
             #[cfg(feature = "capture")]
             benchmark_index: None,
@@ -80,6 +84,8 @@ impl ThumbnailGrid {
         self.cache.clear();
         self.selected.clear();
         self.anchor = None;
+        self.focused = None;
+        self.scroll_offset = 0.0;
     }
 
     pub fn busy(&self) -> bool {
@@ -92,6 +98,40 @@ impl ThumbnailGrid {
     pub fn select_all(&mut self, entries: &[FolderEntry]) {
         self.selected = entries.iter().map(|entry| entry.path.clone()).collect();
         self.anchor = entries.first().map(|entry| entry.path.clone());
+    }
+    fn navigate(
+        &mut self,
+        entries: &[FolderEntry],
+        current: Option<&std::path::Path>,
+        key: egui::Key,
+        stride: usize,
+        modifiers: egui::Modifiers,
+    ) -> Option<usize> {
+        let last = entries.len().checked_sub(1)?;
+        let position = self
+            .focused
+            .as_deref()
+            .or(current)
+            .and_then(|path| entries.iter().position(|entry| entry.path == path));
+        let index = match key {
+            egui::Key::Home => 0,
+            egui::Key::End => last,
+            egui::Key::ArrowLeft | egui::Key::ArrowUp | egui::Key::PageUp => {
+                position.unwrap_or(0).saturating_sub(stride)
+            }
+            _ => position.map_or(0, |position| position.saturating_add(stride).min(last)),
+        };
+        let path = &entries[index].path;
+        if modifiers.shift {
+            if self.anchor.is_none() {
+                self.anchor = position.map(|position| entries[position].path.clone());
+            }
+            self.select(path, entries, modifiers.command, true);
+        } else if !modifiers.command {
+            self.select(path, entries, false, false);
+        }
+        self.focused = Some(path.clone());
+        Some(index)
     }
     fn select(
         &mut self,
@@ -187,6 +227,7 @@ impl ThumbnailGrid {
         preview_loading: bool,
         current: Option<&std::path::Path>,
         catalog: &crate::catalog::Catalog,
+        keyboard_enabled: bool,
     ) -> Option<PathBuf> {
         use crate::theme;
         let mut opened = None;
@@ -212,13 +253,95 @@ impl ThumbnailGrid {
                 0.76
             }
             + 46.0;
+        let keyboard = ui.interact(
+            ui.available_rect_before_wrap(),
+            egui::Id::new("grid-keyboard"),
+            Sense::focusable_noninteractive(),
+        );
+        keyboard.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, keyboard_enabled,
+            format!("Biblioteca, {} imágenes. Flechas para navegar, Espacio para seleccionar, Enter para abrir.", entries.len())));
+        ui.memory_mut(|memory| {
+            memory.set_focus_lock_filter(
+                keyboard.id,
+                egui::EventFilter {
+                    horizontal_arrows: true,
+                    vertical_arrows: true,
+                    escape: true,
+                    ..Default::default()
+                },
+            )
+        });
+        let mut keyboard_index = None;
+        if keyboard_enabled && (keyboard.has_focus() || !ui.ctx().egui_wants_keyboard_input()) {
+            let modifiers = ui.input(|input| input.modifiers);
+            if !modifiers.alt {
+                let page = (ui.available_height() / (row_height + ui.spacing().item_spacing.y))
+                    .floor()
+                    .max(1.0) as usize
+                    * columns;
+                for (key, stride) in [
+                    (egui::Key::ArrowLeft, 1),
+                    (egui::Key::ArrowRight, 1),
+                    (egui::Key::ArrowUp, columns),
+                    (egui::Key::ArrowDown, columns),
+                    (egui::Key::PageUp, page),
+                    (egui::Key::PageDown, page),
+                    (egui::Key::Home, 1),
+                    (egui::Key::End, 1),
+                ] {
+                    if ui.input_mut(|input| input.consume_key(modifiers, key)) {
+                        keyboard_index = self.navigate(entries, current, key, stride, modifiers);
+                        opened = keyboard_index.map(|index| entries[index].path.clone());
+                        keyboard.request_focus();
+                        break;
+                    }
+                }
+                if ui.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::A)) {
+                    self.select_all(entries);
+                }
+                if ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+                {
+                    self.clear_selection();
+                }
+                let focused = self
+                    .focused
+                    .as_deref()
+                    .or(current)
+                    .and_then(|path| entries.iter().find(|entry| entry.path == path))
+                    .map(|entry| entry.path.clone());
+                if let Some(path) = focused {
+                    if ui.input_mut(|input| input.consume_key(modifiers, egui::Key::Space)) {
+                        self.select(&path, entries, true, false);
+                        keyboard.request_focus();
+                        opened = Some(path.clone());
+                    }
+                    if ui.input_mut(|input| input.consume_key(modifiers, egui::Key::Enter)) {
+                        self.open_viewer = true;
+                        opened = Some(path);
+                    }
+                }
+            }
+        }
         let mut wanted = None;
         let mut pending_visible = false;
         #[cfg(feature = "capture")]
         let mut frame = GridFrame::default();
-        let scroll = egui::ScrollArea::vertical()
+        let mut scroll = egui::ScrollArea::vertical()
             .id_salt(("thumbnail-grid", self.density))
             .auto_shrink([false, false]);
+        if let Some(index) = keyboard_index {
+            let top = (index / columns) as f32 * (row_height + ui.spacing().item_spacing.y);
+            let bottom = top + row_height;
+            let height = ui.available_height();
+            let offset = if top < self.scroll_offset {
+                top
+            } else if bottom > self.scroll_offset + height {
+                bottom - height
+            } else {
+                self.scroll_offset
+            };
+            scroll = scroll.vertical_scroll_offset(offset.max(0.0));
+        }
         #[cfg(feature = "capture")]
         let scroll = if let Some(index) = self.benchmark_index {
             let maximum = (entries.len().div_ceil(columns) as f32 * row_height
@@ -228,7 +351,7 @@ impl ThumbnailGrid {
         } else {
             scroll
         };
-        scroll.show_rows(
+        let output = scroll.show_rows(
             ui,
             row_height,
             entries.len().div_ceil(columns),
@@ -255,8 +378,16 @@ impl ThumbnailGrid {
                             let selected = self.selected.contains(path);
                             let (rect, response) = ui.allocate_exact_size(
                                 egui::vec2(tile_width, row_height - spacing),
-                                Sense::click(),
+                                Sense::CLICK,
                             );
+                            response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::SelectableLabel,
+                                    true,
+                                    selected,
+                                    path.file_name().unwrap_or_default().to_string_lossy(),
+                                )
+                            });
                             let color = if selected {
                                 theme::SELECTED
                             } else if response.hovered() {
@@ -427,6 +558,7 @@ impl ThumbnailGrid {
                                 path.display()
                             ));
                             if response.clicked() {
+                                keyboard.request_focus();
                                 let modifiers = ui.input(|input| input.modifiers);
                                 clicked = Some((path.clone(), modifiers.command, modifiers.shift));
                                 opened = Some(path.clone());
@@ -472,11 +604,13 @@ impl ThumbnailGrid {
                 }
             },
         );
+        self.scroll_offset = output.state.offset.y;
         #[cfg(feature = "capture")]
         {
             self.measurement = frame;
         }
         if let Some((path, additive, range)) = clicked {
+            self.focused = Some(path.clone());
             self.select(&path, entries, additive, range);
         }
         // Only one thumbnail in flight; scrolling cancels off-screen work.
@@ -500,6 +634,135 @@ impl ThumbnailGrid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn keyboard_ranges_preserve_anchor_and_ctrl_moves_without_replacing_selection() {
+        let ctx = egui::Context::default();
+        let mut grid = ThumbnailGrid::new(&ctx, MemoryBudget::new(rastera_core::CPU_IMAGE_BUDGET));
+        let entries: Vec<_> = (0..10)
+            .map(|index| FolderEntry {
+                path: format!("{index}.png").into(),
+            })
+            .collect();
+        assert_eq!(
+            grid.navigate(
+                &entries,
+                None,
+                egui::Key::ArrowRight,
+                1,
+                egui::Modifiers::NONE
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            grid.navigate(
+                &entries,
+                None,
+                egui::Key::ArrowDown,
+                3,
+                egui::Modifiers::SHIFT
+            ),
+            Some(3)
+        );
+        assert_eq!(grid.selected.len(), 4);
+        grid.navigate(
+            &entries,
+            None,
+            egui::Key::ArrowUp,
+            3,
+            egui::Modifiers::SHIFT,
+        );
+        assert_eq!(grid.selected, [entries[0].path.clone()].into());
+        grid.navigate(&entries, None, egui::Key::End, 1, egui::Modifiers::COMMAND);
+        assert_eq!(grid.focused, Some(entries[9].path.clone()));
+        assert_eq!(grid.selected, [entries[0].path.clone()].into());
+        grid.navigate(
+            &entries,
+            None,
+            egui::Key::ArrowDown,
+            3,
+            egui::Modifiers::NONE,
+        );
+        assert_eq!(grid.selected, [entries[9].path.clone()].into());
+        grid.navigate(
+            &entries[1..3],
+            None,
+            egui::Key::ArrowRight,
+            1,
+            egui::Modifiers::NONE,
+        );
+        assert_eq!(grid.focused, Some(entries[1].path.clone()));
+        assert_eq!(
+            grid.navigate(&[], None, egui::Key::End, 1, egui::Modifiers::NONE),
+            None
+        );
+    }
+    #[test]
+    fn keyboard_events_scroll_open_and_respect_text_focus_and_disabled_grid() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = egui::Context::default();
+        let catalog = crate::catalog::Catalog::for_test(dir.path().join("catalog.sqlite"));
+        let mut grid = ThumbnailGrid::new(&ctx, MemoryBudget::new(rastera_core::CPU_IMAGE_BUDGET));
+        let entries: Vec<_> = (0..100)
+            .map(|index| FolderEntry {
+                path: dir.path().join(format!("{index}.png")),
+            })
+            .collect();
+        let render = |grid: &mut ThumbnailGrid,
+                      key: Option<egui::Key>,
+                      enabled: bool,
+                      search_focus: bool| {
+            let events = key
+                .map(|key| egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                })
+                .into_iter()
+                .collect();
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    Default::default(),
+                    egui::vec2(640.0, 400.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let mut opened = None;
+            let mut output = ctx.run_ui(input, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut String::new())
+                            .id(egui::Id::new("search-test")),
+                    );
+                    if search_focus {
+                        response.request_focus();
+                    }
+                    opened = grid.show(ui, &entries, true, None, &catalog, enabled);
+                });
+            });
+            output.textures_delta.clear();
+            opened
+        };
+        render(&mut grid, None, true, false);
+        assert_eq!(
+            render(&mut grid, Some(egui::Key::End), true, false),
+            Some(entries[99].path.clone())
+        );
+        assert!(grid.scroll_offset > 0.0);
+        assert_eq!(
+            render(&mut grid, Some(egui::Key::Enter), true, false),
+            Some(entries[99].path.clone())
+        );
+        assert!(grid.open_viewer);
+        render(&mut grid, Some(egui::Key::Home), false, false);
+        assert_eq!(grid.focused, Some(entries[99].path.clone()));
+        render(&mut grid, None, true, true);
+        render(&mut grid, Some(egui::Key::Home), true, true);
+        assert_eq!(grid.focused, Some(entries[99].path.clone()));
+        assert!(!grid.open_viewer);
+    }
     #[test]
     fn ranges_follow_visible_order_and_hidden_anchors_fall_back_to_click() {
         let entries: Vec<_> = ["a.png", "b.png", "c.png", "d.png"]

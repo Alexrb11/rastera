@@ -24,6 +24,8 @@ La caché de miniaturas está junto al catálogo, en thumbnails-v1. Se puede bor
 
 ## Organizar
 
+En Biblioteca, las flechas recorren las miniaturas según las columnas visibles. Home y End van al primer y último resultado; RePág y AvPág avanzan por páginas y desplazan la cuadrícula para mantener visible la imagen enfocada. Shift extiende un rango; Ctrl+flechas mueve el foco sin cambiar la selección y Espacio añade o retira la imagen enfocada. Enter abre esa imagen en Visor. Puedes llegar a la cuadrícula con Tab o pulsando una miniatura. Los atajos de navegación quedan suspendidos al escribir en búsqueda y al abrir un panel auxiliar.
+
 Selecciona una imagen y pulsa Propiedades → Editar organización. Puedes marcar Favorita directamente en Propiedades. Marca Favorita, escribe etiquetas separadas por comas y pulsa Guardar cambios. Se admiten hasta 32 etiquetas de 64 caracteres; se recortan espacios y se eliminan duplicados. El panel muestra las etiquetas y las miniaturas identifican los favoritos.
 
 Ctrl+F enfoca la búsqueda, que filtra por nombre o etiqueta sin distinguir mayúsculas. También puedes filtrar por favoritos y extensión de archivo. Los filtros actúan sobre la carpeta abierta.

@@ -410,17 +410,19 @@ impl RasteraApp {
             if !self.grid_view && ctx.input(|input| input.key_pressed(egui::Key::ArrowLeft)) {
                 self.step(-1);
             }
-            if ctx.input(|input| input.key_pressed(egui::Key::Home)) {
+            if !self.grid_view && ctx.input(|input| input.key_pressed(egui::Key::Home)) {
                 self.zoom = None;
                 self.pan = Vec2::ZERO;
             }
-            if ctx.input(|input| {
-                input.key_pressed(egui::Key::Plus) || input.key_pressed(egui::Key::Equals)
-            }) {
+            if !self.grid_view
+                && ctx.input(|input| {
+                    input.key_pressed(egui::Key::Plus) || input.key_pressed(egui::Key::Equals)
+                })
+            {
                 self.zoom =
                     Some((self.zoom.unwrap_or(self.current_scale) * 1.25).clamp(0.05, 16.0));
             }
-            if ctx.input(|input| input.key_pressed(egui::Key::Minus)) {
+            if !self.grid_view && ctx.input(|input| input.key_pressed(egui::Key::Minus)) {
                 self.zoom =
                     Some((self.zoom.unwrap_or(self.current_scale) / 1.25).clamp(0.05, 16.0));
             }
@@ -568,6 +570,14 @@ impl RasteraApp {
                             ("F4 / F5", "Abrir una ruta / actualizar carpeta"),
                             ("Ctrl+clic", "Añadir o quitar de la selección"),
                             ("Shift+clic", "Seleccionar un rango"),
+                            (
+                                "Flechas / Home / End",
+                                "Navegar por miniaturas / primera / última",
+                            ),
+                            ("RePág / AvPág", "Mover una página en Biblioteca"),
+                            ("Shift+flechas", "Seleccionar un rango en Biblioteca"),
+                            ("Ctrl+flechas / Espacio", "Mover foco / cambiar selección"),
+                            ("Enter", "Abrir la miniatura en el visor"),
                             ("Esc", "Cerrar panel / deseleccionar / volver"),
                             ("← / →", "Imagen anterior / siguiente en el visor"),
                             ("Home", "Ajustar a ventana"),
@@ -943,6 +953,13 @@ impl RasteraApp {
             self.loading,
             self.path.as_deref(),
             &self.catalog,
+            !(self.batch.open
+                || self.catalog.editor_open
+                || self.route_open
+                || self.details_popup
+                || self.shortcuts_open
+                || self.diagnostics_open
+                || self.dialog.is_some()),
         ) {
             self.viewer_filtered = true;
             if self.path.as_ref() != Some(&path) {
