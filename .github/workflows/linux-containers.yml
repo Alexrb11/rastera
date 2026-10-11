@@ -7,7 +7,7 @@ on:
         description: 'Successful Desktop alpha run containing the Linux alpha.3 package'
         type: string
         required: true
-        default: '38145725452'
+        default: '38156421221'
 
 permissions:
   contents: read
@@ -57,7 +57,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [ubuntu2204, ubuntu2404, debian12]
+        service:
+          - ubuntu2204
+          - ubuntu2404
+          - debian12
+          - ubuntu2204-wayland
+          - ubuntu2404-wayland
+          - debian12-wayland
     env:
       CONTAINER_SERVICE: ${{ matrix.service }}
       EXPECTED_COMMIT: ${{ needs.verify-run.outputs.source_commit }}
