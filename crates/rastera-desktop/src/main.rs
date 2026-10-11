@@ -37,6 +37,7 @@ fn main() -> eframe::Result {
     .expect("the embedded Rastera icon must be a valid PNG");
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
+            .with_app_id("io.github.Alexrb11.rastera")
             .with_icon(icon)
             .with_inner_size(capture_size.unwrap_or([1180.0, 780.0]))
             .with_min_inner_size([760.0, 480.0]),
