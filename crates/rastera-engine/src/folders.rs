@@ -178,9 +178,11 @@ mod tests {
             emit(vec![
                 FolderEntry {
                     path: "z.png".into(),
+                    stamp: None,
                 },
                 FolderEntry {
                     path: "a.png".into(),
+                    stamp: None,
                 },
             ])
         }

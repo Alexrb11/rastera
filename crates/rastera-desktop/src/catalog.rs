@@ -786,6 +786,7 @@ mod tests {
             .into_iter()
             .map(|name| FolderEntry {
                 path: dir.path().join(name),
+                stamp: None,
             })
             .collect();
         catalog.annotations.insert(

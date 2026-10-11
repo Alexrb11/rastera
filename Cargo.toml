@@ -19,6 +19,7 @@ eframe = { version = "0.36.2", default-features = false, features = ["accesskit"
 rfd = "0.17"
 blake3 = "1.8.7"
 moxcms = "0.8.1"
+notify = "8.2.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

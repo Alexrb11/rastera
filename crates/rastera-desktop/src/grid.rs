@@ -651,6 +651,7 @@ mod tests {
         let entries: Vec<_> = (0..10)
             .map(|index| FolderEntry {
                 path: format!("{index}.png").into(),
+                stamp: None,
             })
             .collect();
         assert_eq!(
@@ -715,6 +716,7 @@ mod tests {
         let entries: Vec<_> = (0..100)
             .map(|index| FolderEntry {
                 path: dir.path().join(format!("{index}.png")),
+                stamp: None,
             })
             .collect();
         let render = |grid: &mut ThumbnailGrid,
@@ -779,6 +781,7 @@ mod tests {
             .into_iter()
             .map(|name| FolderEntry {
                 path: PathBuf::from(name),
+                stamp: None,
             })
             .collect();
         let mut grid = ThumbnailGrid::new(

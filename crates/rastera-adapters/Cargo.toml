@@ -12,6 +12,7 @@ tempfile.workspace = true
 png = "0.18"
 blake3.workspace = true
 moxcms.workspace = true
+notify.workspace = true
 
 [dev-dependencies]
 rastera-engine.workspace = true

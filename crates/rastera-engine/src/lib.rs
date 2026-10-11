@@ -10,3 +10,5 @@ pub use loader::{ImageLoadStats, ImageLoader, LoadedImage, ResidentImage};
 
 mod folders;
 pub use folders::{FolderEvent, FolderScanner, FolderUpdate};
+mod monitor;
+pub use monitor::{FolderMonitor, LibraryUpdate};

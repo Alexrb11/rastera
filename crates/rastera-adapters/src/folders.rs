@@ -1,12 +1,46 @@
-use std::{fs, path::Path};
+use std::{
+    collections::HashSet,
+    fs,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+
+use notify::{EventKind, RecursiveMode, Watcher};
 
 use rastera_core::{
-    CancellationToken, ErrorKind, FolderBackend, FolderEntry, MAX_FOLDER_ENTRIES,
-    MAX_FOLDER_PATH_BYTES, RasteraError, Result,
+    CancellationToken, ErrorKind, FileStamp, FolderBackend, FolderChanges, FolderEntry,
+    FolderWatch, MAX_FOLDER_ENTRIES, MAX_FOLDER_PATH_BYTES, RasteraError, Result,
 };
 
 #[derive(Default)]
 pub struct LocalFolders;
+
+#[derive(Default)]
+struct Changes {
+    paths: HashSet<PathBuf>,
+    path_bytes: usize,
+    rescan: bool,
+    error: Option<String>,
+}
+
+struct NativeWatch {
+    _watcher: notify::RecommendedWatcher,
+    changes: Arc<Mutex<Changes>>,
+}
+
+impl FolderWatch for NativeWatch {
+    fn take_changes(&self) -> Result<FolderChanges> {
+        let mut changes = self.changes.lock().unwrap_or_else(|e| e.into_inner());
+        let taken = std::mem::take(&mut *changes);
+        if let Some(error) = taken.error {
+            return Err(RasteraError::new(ErrorKind::Io, error));
+        }
+        Ok(FolderChanges {
+            paths: taken.paths.into_iter().collect(),
+            rescan: taken.rescan,
+        })
+    }
+}
 
 fn io_error(error: std::io::Error) -> RasteraError {
     RasteraError::new(
@@ -16,6 +50,38 @@ fn io_error(error: std::io::Error) -> RasteraError {
 }
 
 impl FolderBackend for LocalFolders {
+    fn watch(&self, path: &Path) -> Result<Box<dyn FolderWatch>> {
+        let changes = Arc::new(Mutex::new(Changes::default()));
+        let callback_changes = changes.clone();
+        let mut watcher =
+            notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+                let mut changes = callback_changes.lock().unwrap_or_else(|e| e.into_inner());
+                match event {
+                    Ok(event) if !matches!(event.kind, EventKind::Access(_)) => {
+                        changes.rescan = true;
+                        for path in event.paths {
+                            let bytes = path.as_os_str().as_encoded_bytes().len();
+                            if changes.paths.len() < MAX_FOLDER_ENTRIES
+                                && changes.path_bytes + bytes <= MAX_FOLDER_PATH_BYTES
+                                && changes.paths.insert(path)
+                            {
+                                changes.path_bytes += bytes;
+                            }
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(error) => changes.error = Some(format!("Falló el observador: {error}")),
+                }
+            })
+            .map_err(|error| RasteraError::new(ErrorKind::Io, error.to_string()))?;
+        watcher
+            .watch(path, RecursiveMode::NonRecursive)
+            .map_err(|error| RasteraError::new(ErrorKind::Io, error.to_string()))?;
+        Ok(Box::new(NativeWatch {
+            _watcher: watcher,
+            changes,
+        }))
+    }
     fn is_directory(&self, path: &Path) -> Result<bool> {
         fs::metadata(path)
             .map(|metadata| metadata.is_dir())
@@ -60,7 +126,14 @@ impl FolderBackend for LocalFolders {
                     "Lectura parcial: se alcanzó el límite inicial de 10.000 archivos o 16 MiB de rutas",
                 ));
             }
-            page.push(FolderEntry { path });
+            let metadata = entry.metadata().map_err(io_error)?;
+            page.push(FolderEntry {
+                path,
+                stamp: Some(FileStamp {
+                    length: metadata.len(),
+                    modified: metadata.modified().ok(),
+                }),
+            });
             count += 1;
             if page.len() == 64 {
                 emit(std::mem::replace(&mut page, Vec::with_capacity(64)))?;
@@ -77,6 +150,75 @@ impl FolderBackend for LocalFolders {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_monitor_tracks_create_modify_rename_delete_and_directory_recovery() {
+        use rastera_engine::{FolderMonitor, LibraryUpdate};
+        use std::time::{Duration, Instant};
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("fotografías");
+        fs::create_dir(&dir).unwrap();
+        let monitor = FolderMonitor::new(Arc::new(LocalFolders), Arc::new(|| {}));
+        monitor.request(42, dir.clone(), vec![]);
+        let wait = |predicate: &dyn Fn(&LibraryUpdate) -> bool| {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            loop {
+                if let Some(event) = monitor.try_recv() {
+                    assert_eq!(event.generation, 42);
+                    if predicate(&event) {
+                        return event;
+                    }
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "filesystem change was not reconciled"
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        let initial = wait(&|event| event.error.is_none());
+        assert!(
+            !initial.polling,
+            "this native integration test needs filesystem notifications"
+        );
+        let path = dir.join("añadida.PNG");
+        fs::write(&path, [1]).unwrap();
+        let added = wait(&|event| {
+            event
+                .entries
+                .as_ref()
+                .is_some_and(|entries| entries.len() == 1)
+        });
+        assert_eq!(added.entries.unwrap()[0].stamp.as_ref().unwrap().length, 1);
+        fs::write(&path, [1, 2, 3]).unwrap();
+        let modified = wait(&|event| event.changed.contains(&path));
+        assert_eq!(
+            modified.entries.unwrap()[0].stamp.as_ref().unwrap().length,
+            3
+        );
+        let renamed = dir.join("renombrada.png");
+        fs::rename(&path, &renamed).unwrap();
+        wait(&|event| {
+            event
+                .entries
+                .as_ref()
+                .is_some_and(|entries| entries.len() == 1 && entries[0].path == renamed)
+        });
+        fs::remove_file(&renamed).unwrap();
+        wait(&|event| event.entries.as_ref().is_some_and(Vec::is_empty));
+        fs::remove_dir(&dir).unwrap();
+        wait(&|event| event.error.is_some());
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("recuperada.webp"), [5]).unwrap();
+        let recovered = wait(&|event| {
+            event.error.is_none()
+                && event
+                    .entries
+                    .as_ref()
+                    .is_some_and(|entries| entries.len() == 1)
+        });
+        assert!(!recovered.polling);
+    }
 
     #[test]
     fn scans_progressively_without_recursion_or_unsupported_files() {
