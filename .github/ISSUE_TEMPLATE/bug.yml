@@ -6,14 +6,14 @@ body:
     id: version
     attributes:
       label: Versión de Rastera
-      placeholder: "0.1.0-alpha.1 · ZIP portable o compilación propia"
+      placeholder: "0.1.0-alpha.3 · paquete oficial o compilación propia"
     validations:
       required: true
   - type: input
     id: system
     attributes:
       label: Sistema y gráficos
-      description: Versión de Windows, GPU y escalado de pantalla.
+      description: Windows, distribución Linux o macOS y versión; arquitectura, GPU y escalado. En Linux, indica X11/Wayland y escritorio.
     validations:
       required: true
   - type: textarea
