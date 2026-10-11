@@ -1,0 +1,119 @@
+name: Linux release containers
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_run_id:
+        description: 'Successful Desktop alpha run containing the Linux alpha.3 package'
+        type: string
+        required: true
+        default: '38145725452'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-run:
+    runs-on: ubuntu-24.04
+    outputs:
+      source_commit: ${{ steps.verify.outputs.source_commit }}
+      package_run_id: ${{ steps.verify.outputs.package_run_id }}
+    steps:
+      - name: Validate the package run belongs to this repository and workflow
+        id: verify
+        env:
+          PACKAGE_RUN_ID: ${{ inputs.package_run_id }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          run_id = os.environ['PACKAGE_RUN_ID']
+          if not re.fullmatch(r'[1-9][0-9]{0,19}', run_id):
+              raise SystemExit('package_run_id must be a positive decimal run ID')
+          repository = os.environ['GH_REPO']
+          data = json.loads(subprocess.check_output(
+              ['gh', 'api', 'repos/' + repository + '/actions/runs/' + run_id],
+              text=True, timeout=30))
+          if data.get('path') != '.github/workflows/windows-alpha.yml':
+              raise SystemExit('The run did not execute the Desktop alpha packaging workflow')
+          if data.get('status') != 'completed' or data.get('conclusion') != 'success':
+              raise SystemExit('The package run must be completed and successful')
+          if (data.get('head_repository') or {}).get('full_name') != repository:
+              raise SystemExit('The package run must originate from this repository')
+          commit = data.get('head_sha', '')
+          if not re.fullmatch(r'[a-f0-9]{40}', commit):
+              raise SystemExit('The package run has no valid source commit')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('source_commit=' + commit + '\npackage_run_id=' + run_id + '\n')
+          print('Validated Desktop alpha run ' + run_id + ' at ' + commit)
+          PY
+
+  test-containers:
+    needs: verify-run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ubuntu2204, ubuntu2404, debian12]
+    env:
+      CONTAINER_SERVICE: ${{ matrix.service }}
+      EXPECTED_COMMIT: ${{ needs.verify-run.outputs.source_commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download the validated Linux release artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-x64-alpha
+          path: work/container-package
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.verify-run.outputs.package_run_id }}
+          github-token: ${{ github.token }}
+      - name: Select the exact archive and prepare only this service's reports
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          package = Path('work/container-package').resolve()
+          archives = sorted(package.glob('*.tar.gz'))
+          if len(archives) != 1:
+              raise SystemExit('Expected exactly one Linux release archive')
+          archive = archives[0]
+          if archive.is_symlink() or not re.fullmatch(r'rastera-\d+\.\d+\.\d+-alpha\.\d+-linux-x64\.tar\.gz', archive.name):
+              raise SystemExit('Unexpected Linux release archive name')
+          checksum = Path(str(archive) + '.sha256')
+          if not checksum.is_file() or checksum.is_symlink() or list(package.glob('*.tar.gz.sha256')) != [checksum]:
+              raise SystemExit('Expected exactly the selected archive SHA-256 sidecar')
+          reports = Path('work/container-reports').resolve()
+          reports.mkdir(parents=True, exist_ok=True)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write('RASTERA_PACKAGE_DIR=' + str(package) + '\n')
+              output.write('RASTERA_ARCHIVE_NAME=' + archive.name + '\n')
+              output.write('RASTERA_REPORTS_DIR=' + str(reports) + '\n')
+              output.write('RASTERA_EXPECTED_COMMIT=' + os.environ['EXPECTED_COMMIT'] + '\n')
+          PY
+          service_reports="$GITHUB_WORKSPACE/work/container-reports/$CONTAINER_SERVICE"
+          mkdir -p "$service_reports"
+          sudo chgrp 10001 "$service_reports"
+          chmod 0770 "$service_reports"
+      - name: Build the clean runtime image without Rust
+        run: docker compose -f scripts/docker/compose.yaml build "$CONTAINER_SERVICE"
+      - name: Verify release installation, GUI decode and catalog persistence
+        run: docker compose -f scripts/docker/compose.yaml run --rm --no-deps -T "$CONTAINER_SERVICE"
+      - name: Make this service's private reports readable by the artifact uploader
+        if: always()
+        run: |
+          service_reports="$GITHUB_WORKSPACE/work/container-reports/$CONTAINER_SERVICE"
+          if [ -d "$service_reports" ] && [ ! -L "$service_reports" ]; then
+            sudo chown -R --no-dereference "$(id -u):$(id -g)" "$service_reports"
+            chmod -R u+rwX,go-rwx "$service_reports"
+          fi
+      - name: Upload container test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-container-${{ matrix.service }}
+          if-no-files-found: warn
+          path: work/container-reports/${{ matrix.service }}/
