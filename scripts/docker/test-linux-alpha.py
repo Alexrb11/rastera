@@ -90,7 +90,7 @@ def validate_display(env):
 
 
 def wayland_protocol(log_path):
-    """Require native window requests, not just advertised interface names.
+    """Require a configured Rastera toplevel with a committed non-null buffer.
 
     Both wayland-backend's Rust debug output and libwayland's client trace use
     interface@id.method (newer libwayland also uses interface#id.method).
@@ -99,21 +99,77 @@ def wayland_protocol(log_path):
     requests = {
         "display_registry": r"\bwl_display[@#]\d+\.get_registry\s*\(",
         "registry_globals": r"\bwl_registry[@#]\d+\.global\s*,?\s*\(",
-        "create_surface": r"\bwl_compositor[@#]\d+\.create_surface\s*\(",
-        "xdg_surface": r"\bxdg_wm_base[@#]\d+\.get_xdg_surface\s*\(",
-        "xdg_toplevel": r"\bxdg_surface[@#]\d+\.get_toplevel\s*\(",
-        "application_id": r"\bxdg_toplevel[@#]\d+\.set_app_id\s*\(\s*(?:"
-                          + quoted_id + r"|Some\(\s*" + quoted_id + r"\s*\))\s*\)",
-        "surface_commit": r"\bwl_surface[@#]\d+\.commit\s*\(",
     }
     lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
     evidence = {name: next((line for line in lines if re.search(pattern, line)), None)
                 for name, pattern in requests.items()}
     missing = [name for name, line in evidence.items() if line is None]
     require(not missing, "The Rastera client log lacks native Wayland protocol evidence: " + ", ".join(missing))
-    return {"log": log_path.name, "log_sha256": digest(log_path),
-            "observed_messages": evidence, "application_id": APP_ID,
-            "x11_fallback_available": False}
+
+    def locate(pattern, start=0, stop=None):
+        expression = re.compile(pattern)
+        for index in range(start, len(lines) if stop is None else stop):
+            match = expression.search(lines[index])
+            if match:
+                return index, match
+        return None
+
+    bindings = re.compile(r"\bxdg_wm_base[@#]\d+\.get_xdg_surface\s*\("
+                          r"[^)]*?\bxdg_surface[@#](\d+)\b[^)]*?\bwl_surface[@#](\d+)\b")
+    for binding_index, line in enumerate(lines):
+        binding = bindings.search(line)
+        if not binding:
+            continue
+        xdg_id, surface_id = binding.groups()
+        surface = r"\bwl_surface[@#]" + surface_id + r"\."
+        xdg = r"\bxdg_surface[@#]" + xdg_id + r"\."
+        created = locate(r"\bwl_compositor[@#]\d+\.create_surface\s*\("
+                         r"[^)]*?\bwl_surface[@#]" + surface_id + r"\b", stop=binding_index)
+        toplevel = locate(xdg + r"get_toplevel\s*\([^)]*?\bxdg_toplevel[@#](\d+)\b",
+                          binding_index + 1)
+        if not created or not toplevel:
+            continue
+        toplevel_index, toplevel_match = toplevel
+        toplevel_id = toplevel_match[1]
+        application = locate(r"\bxdg_toplevel[@#]" + toplevel_id
+                             + r"\.set_app_id\s*\(\s*(?:" + quoted_id
+                             + r"|Some\(\s*" + quoted_id + r"\s*\))\s*\)", toplevel_index + 1)
+        if not application:
+            continue
+        configure_pattern = re.compile(xdg + r"configure\s*,?\s*\(\s*(\d+)\s*,?\s*\)")
+        # Compare trace order and protocol object IDs, never numeric timestamps.
+        # A compositor may send several configure events before the client acks.
+        for configure_index in range(toplevel_index + 1, len(lines)):
+            configure = configure_pattern.search(lines[configure_index])
+            if not configure:
+                continue
+            ack = locate(xdg + r"ack_configure\s*\(\s*" + configure[1] + r"\s*,?\s*\)",
+                         configure_index + 1)
+            if not ack:
+                continue
+            attach_pattern = re.compile(surface + r"attach\s*\(\s*(?:Some\(\s*)?wl_buffer[@#](\d+)\b")
+            for attach_index in range(ack[0] + 1, len(lines)):
+                attached = attach_pattern.search(lines[attach_index])
+                if not attached or int(attached[1]) == 0:
+                    continue
+                # Ignore decoration subsurfaces and any buffer replaced/detached
+                # before commit: only the Rastera toplevel's linked surface counts.
+                action = locate(surface + r"(attach|commit)\s*\(", attach_index + 1)
+                if not action or action[1][1] != "commit":
+                    continue
+                evidence.update({
+                    "create_surface": lines[created[0]], "xdg_surface": line,
+                    "xdg_toplevel": lines[toplevel_index], "application_id": lines[application[0]],
+                    "surface_configure": lines[configure_index], "ack_configure": lines[ack[0]],
+                    "attached_buffer": lines[attach_index], "surface_commit": lines[action[0]],
+                })
+                return {"log": log_path.name, "log_sha256": digest(log_path),
+                        "observed_messages": evidence, "application_id": APP_ID,
+                        "surface_ids": {"wl_surface": int(surface_id), "xdg_surface": int(xdg_id),
+                                        "xdg_toplevel": int(toplevel_id), "wl_buffer": int(attached[1])},
+                        "buffer_committed": True, "x11_fallback_available": False}
+    raise ValueError("The Rastera client log lacks a linked native Wayland toplevel with the expected "
+                     "application ID, configure/ack and non-null buffer attachment followed by commit")
 
 
 def profile(root):
