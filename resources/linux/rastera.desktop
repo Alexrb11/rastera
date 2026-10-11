@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Rastera
+GenericName=Image viewer and organizer
+Comment=Browse, organize and export JPEG, PNG and WebP images
+Exec=rastera %f
+Icon=io.github.Alexrb11.rastera
+Terminal=false
+Categories=Graphics;Photography;Viewer;
+Keywords=Image;Photo;Organize;Batch;
+StartupNotify=true
