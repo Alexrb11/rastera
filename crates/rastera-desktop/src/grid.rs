@@ -91,6 +91,38 @@ impl ThumbnailGrid {
     pub fn busy(&self) -> bool {
         self.pending.is_some()
     }
+    pub fn backend(&self) -> Arc<CachedThumbnails> {
+        self.backend.clone()
+    }
+    pub fn reconcile(&mut self, entries: &[FolderEntry], changed: &HashSet<PathBuf>) {
+        let paths: HashSet<_> = entries.iter().map(|entry| &entry.path).collect();
+        self.cache
+            .retain(|path, _| paths.contains(path) && !changed.contains(path));
+        self.selected.retain(|path| paths.contains(path));
+        if self
+            .anchor
+            .as_ref()
+            .is_some_and(|path| !paths.contains(path))
+        {
+            self.anchor = None;
+        }
+        if self
+            .focused
+            .as_ref()
+            .is_some_and(|path| !paths.contains(path))
+        {
+            self.focused = None;
+        }
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|path| !paths.contains(path) || changed.contains(path))
+        {
+            self.generation += 1;
+            self.loader.cancel();
+            self.pending = None;
+        }
+    }
     pub fn clear_selection(&mut self) {
         self.selected.clear();
         self.anchor = None;
@@ -644,6 +676,41 @@ impl ThumbnailGrid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reconciliation_preserves_unchanged_textures_scroll_and_hidden_selection() {
+        let ctx = egui::Context::default();
+        let mut grid = ThumbnailGrid::new(&ctx, MemoryBudget::new(rastera_core::CPU_IMAGE_BUDGET));
+        let entries = ["keep.png", "changed.png", "removed.png"].map(|name| FolderEntry {
+            path: name.into(),
+            stamp: None,
+        });
+        for entry in &entries {
+            grid.cache.insert(
+                entry.path.clone(),
+                Thumbnail {
+                    texture: None,
+                    size: Vec2::ZERO,
+                    error: None,
+                    touched: 0,
+                    source_size: None,
+                },
+            );
+            grid.selected.insert(entry.path.clone());
+        }
+        grid.anchor = Some(entries[0].path.clone());
+        grid.focused = Some(entries[2].path.clone());
+        grid.scroll_offset = 328.0;
+        grid.pending = Some(entries[1].path.clone());
+        let generation = grid.generation;
+        grid.reconcile(&entries[..2], &HashSet::from([entries[1].path.clone()]));
+        assert_eq!(grid.cache.len(), 1);
+        assert!(grid.cache.contains_key(&entries[0].path));
+        assert_eq!(grid.selected.len(), 2);
+        assert_eq!(grid.anchor.as_ref(), Some(&entries[0].path));
+        assert!(grid.focused.is_none() && grid.pending.is_none());
+        assert!(grid.generation > generation);
+        assert_eq!(grid.scroll_offset, 328.0);
+    }
     #[test]
     fn keyboard_ranges_preserve_anchor_and_ctrl_moves_without_replacing_selection() {
         let ctx = egui::Context::default();

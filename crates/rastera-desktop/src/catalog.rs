@@ -17,6 +17,7 @@ pub struct Catalog {
     pub error: Option<String>,
     annotations: HashMap<PathBuf, Annotation>,
     pending: HashSet<PathBuf>,
+    active: Option<HashSet<PathBuf>>,
     search: String,
     favorites: bool,
     format: String,
@@ -66,6 +67,7 @@ impl Catalog {
             error: None,
             annotations: HashMap::new(),
             pending: HashSet::new(),
+            active: None,
             search: String::new(),
             favorites: false,
             format: String::new(),
@@ -102,6 +104,7 @@ impl Catalog {
         self.error = None;
         self.annotations.clear();
         self.pending.clear();
+        self.active = Some(HashSet::new());
         self.filtered.clear();
         self.dirty = true;
         self.editor_path = None;
@@ -110,6 +113,21 @@ impl Catalog {
     }
     pub fn invalidate(&mut self) {
         self.dirty = true;
+    }
+    pub fn reconcile(&mut self, entries: &[FolderEntry]) {
+        let paths: HashSet<_> = entries.iter().map(|entry| &entry.path).collect();
+        self.active = Some(paths.iter().map(|path| (*path).clone()).collect());
+        self.annotations.retain(|path, _| paths.contains(path));
+        if self
+            .editor_path
+            .as_ref()
+            .is_some_and(|path| !paths.contains(path))
+        {
+            self.editor_open = false;
+            self.editor_path = None;
+        }
+        self.invalidate();
+        self.refresh(entries);
     }
     pub fn annotation(&self, path: &Path) -> Option<&Annotation> {
         self.annotations.get(path)
@@ -210,6 +228,9 @@ impl Catalog {
         self.dirty = true;
     }
     pub fn load(&mut self, paths: Vec<PathBuf>) {
+        if let Some(active) = &mut self.active {
+            active.extend(paths.iter().cloned());
+        }
         if let Err(error) = self.worker.request(CatalogCommand::Load {
             generation: self.generation,
             paths,
@@ -238,6 +259,14 @@ impl Catalog {
                     self.ready = true;
                     self.error = None;
                     for (path, annotation) in records {
+                        if self
+                            .active
+                            .as_ref()
+                            .is_some_and(|active| !active.contains(&path))
+                        {
+                            self.pending.remove(&path);
+                            continue;
+                        }
                         if event.edited {
                             self.pending.remove(&path);
                             self.annotations.insert(path, annotation);
@@ -542,6 +571,9 @@ impl Catalog {
                 self.clear_filters();
             }
         });
+        self.refresh(entries);
+    }
+    pub fn refresh(&mut self, entries: &[FolderEntry]) {
         if self.dirty {
             self.bulk_preview_dirty = true;
             let search = self.search.to_lowercase();
@@ -684,6 +716,46 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reconciliation_keeps_filters_and_does_not_restore_removed_rows_from_late_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut catalog = Catalog::for_test(dir.path().join("catalog.sqlite"));
+        let entries = ["keep.png", "removed.png", "hidden.jpg"].map(|name| FolderEntry {
+            path: name.into(),
+            stamp: None,
+        });
+        let mut db = SqliteCatalog::open(&dir.path().join("catalog.sqlite")).unwrap();
+        db.save(&entries[1].path, &Annotation::default(), None)
+            .unwrap();
+        drop(db);
+        catalog.search = "keep".into();
+        catalog.descending = true;
+        catalog.favorites = true;
+        catalog.annotations.insert(
+            entries[0].path.clone(),
+            Annotation {
+                favorite: true,
+                tags: vec!["aprobada".into()],
+                ..Default::default()
+            },
+        );
+        catalog
+            .annotations
+            .insert(entries[1].path.clone(), Annotation::default());
+        catalog.load(vec![entries[1].path.clone()]);
+        catalog.reconcile(&[entries[0].clone(), entries[2].clone()]);
+        assert_eq!(catalog.filtered, [entries[0].clone()]);
+        assert!(catalog.descending && catalog.favorites);
+        assert_eq!(catalog.search, "keep");
+        assert!(catalog.annotations[&entries[0].path].favorite);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !catalog.ready {
+            catalog.receive();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!catalog.annotations.contains_key(&entries[1].path));
+    }
     use rastera_core::{CatalogBackend, FileStamp, ImageKind};
     fn settle_bulk(catalog: &mut Catalog) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);

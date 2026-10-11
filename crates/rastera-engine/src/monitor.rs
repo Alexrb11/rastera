@@ -61,7 +61,7 @@ fn changed_paths(
     new.iter()
         .filter(|entry| {
             old.get(&entry.path)
-                .is_some_and(|stamp| *stamp != &entry.stamp)
+                .is_none_or(|stamp| *stamp != &entry.stamp)
                 || hints.contains(&entry.path)
         })
         .map(|entry| entry.path.clone())

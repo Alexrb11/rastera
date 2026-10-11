@@ -1,10 +1,12 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use crossbeam_channel::{Receiver, bounded};
 use eframe::egui::{self, Align, Color32, Layout, Rect, RichText, Sense, TextureHandle, Vec2};
 use rastera_adapters::{LocalFolders, LocalImages};
 use rastera_core::{CPU_IMAGE_BUDGET, ErrorKind, FolderEntry, ImageInfo};
-use rastera_engine::{FolderScanner, FolderUpdate, ImageLoader, memory::MemoryBudget};
+use rastera_engine::{
+    FolderMonitor, FolderScanner, FolderUpdate, ImageLoader, LibraryUpdate, memory::MemoryBudget,
+};
 
 use crate::theme::{self, ACCENT, MUTED};
 
@@ -32,6 +34,8 @@ pub struct RasteraApp {
     viewer_filtered: bool,
     loader: ImageLoader,
     scanner: FolderScanner,
+    monitor: FolderMonitor,
+    folder_polling: Option<bool>,
     folder_generation: u64,
     folder: Option<PathBuf>,
     entries: Vec<FolderEntry>,
@@ -54,21 +58,46 @@ pub struct RasteraApp {
     #[cfg(feature = "capture")]
     capture_bulk_started: bool,
     #[cfg(feature = "capture")]
+    capture_library_ready: bool,
+    #[cfg(feature = "capture")]
     navigation: Option<crate::navigation::NavigationBenchmark>,
 }
 
 impl RasteraApp {
     pub fn new(cc: &eframe::CreationContext<'_>, initial: Option<PathBuf>) -> Self {
-        theme::configure(&cc.egui_ctx);
-        let ctx = cc.egui_ctx.clone();
+        Self::with_catalog(
+            &cc.egui_ctx,
+            initial,
+            crate::catalog::Catalog::new(&cc.egui_ctx),
+        )
+    }
+
+    fn with_catalog(
+        context: &egui::Context,
+        initial: Option<PathBuf>,
+        catalog: crate::catalog::Catalog,
+    ) -> Self {
+        theme::configure(context);
         let budget = MemoryBudget::new(CPU_IMAGE_BUDGET);
-        let grid = crate::grid::ThumbnailGrid::new(&cc.egui_ctx, budget.clone());
+        let grid = crate::grid::ThumbnailGrid::new(context, budget.clone());
+        let ctx = context.clone();
+        let thumbnails = grid.backend();
+        let monitor = FolderMonitor::with_prepare(
+            Arc::new(LocalFolders),
+            Arc::new(move || ctx.request_repaint()),
+            Arc::new(move |event, cancel| {
+                if let Some(entries) = &event.entries {
+                    thumbnails.invalidate_changed(entries, &event.changed, cancel);
+                }
+            }),
+        );
+        let ctx = context.clone();
         let loader = ImageLoader::new(
             Arc::new(LocalImages),
             budget.clone(),
             Arc::new(move || ctx.request_repaint()),
         );
-        let ctx = cc.egui_ctx.clone();
+        let ctx = context.clone();
         let scanner = FolderScanner::new(
             Arc::new(LocalFolders),
             Arc::new(move || ctx.request_repaint()),
@@ -80,16 +109,18 @@ impl RasteraApp {
             route_focus_requested: false,
             shortcuts_open: false,
             diagnostics_open: false,
-            detail: crate::detail::DetailView::new(&cc.egui_ctx, budget.clone()),
-            batch: crate::batch::Batch::new(&cc.egui_ctx, budget.clone()),
+            detail: crate::detail::DetailView::new(context, budget.clone()),
+            batch: crate::batch::Batch::new(context, budget.clone()),
             budget,
-            catalog: crate::catalog::Catalog::new(&cc.egui_ctx),
+            catalog,
             metadata_dirty: false,
             grid,
             grid_view: false,
             viewer_filtered: false,
             loader,
             scanner,
+            monitor,
+            folder_polling: None,
             folder_generation: 0,
             folder: None,
             entries: Vec::new(),
@@ -112,6 +143,8 @@ impl RasteraApp {
             #[cfg(feature = "capture")]
             capture_bulk_started: false,
             #[cfg(feature = "capture")]
+            capture_library_ready: false,
+            #[cfg(feature = "capture")]
             navigation: crate::navigation::NavigationBenchmark::from_env(),
         };
         if let Some(path) = initial {
@@ -127,6 +160,8 @@ impl RasteraApp {
     }
 
     fn open(&mut self, path: PathBuf) {
+        self.monitor.cancel();
+        self.folder_polling = None;
         self.viewer_filtered = false;
         self.detail.clear();
         let path = std::path::absolute(&path).unwrap_or(path);
@@ -151,6 +186,7 @@ impl RasteraApp {
     }
 
     fn open_image(&mut self, path: PathBuf) {
+        self.metadata_dirty = false;
         self.detail.clear();
         self.budget.set_foreground_loading(true);
         self.generation += 1;
@@ -280,13 +316,26 @@ impl RasteraApp {
                         && error.kind != ErrorKind::Cancelled
                     {
                         self.folder_error = Some(error.to_string());
-                        if self.entries.is_empty() {
-                            self.folder = None;
-                        }
+                    }
+                    if let Some(folder) = &self.folder {
+                        self.monitor.request(
+                            self.folder_generation,
+                            folder.clone(),
+                            self.entries.clone(),
+                        );
                     }
                 }
             }
         }
+        while let Some(event) = self.monitor.try_recv() {
+            if event.generation != self.folder_generation || self.folder.is_none() {
+                continue;
+            }
+            self.folder_polling = Some(event.polling);
+            self.folder_error = event.error.clone();
+            self.reconcile_library(event);
+        }
+        self.catalog.refresh(&self.entries);
         while let Some(event) = self.loader.try_recv() {
             if event.generation != self.generation {
                 continue;
@@ -331,6 +380,55 @@ impl RasteraApp {
             && let (Some(path), Some(preview)) = (&self.path, &self.preview)
         {
             self.metadata_dirty = !self.catalog.save_metadata(path, &preview.info);
+        }
+    }
+
+    fn reconcile_library(&mut self, event: LibraryUpdate) {
+        let Some(entries) = event.entries else {
+            return;
+        };
+        let previous_view = self.viewer_entries().to_vec();
+        let previous_paths: HashSet<_> = self.entries.iter().map(|entry| &entry.path).collect();
+        let added = entries
+            .iter()
+            .filter(|entry| !previous_paths.contains(&entry.path))
+            .map(|entry| entry.path.clone())
+            .collect::<Vec<_>>();
+        self.grid.reconcile(&entries, &event.changed);
+        self.entries = entries;
+        self.catalog.reconcile(&self.entries);
+        if !added.is_empty() {
+            self.catalog.load(added);
+        }
+        if let Some(path) = self.path.clone()
+            && self.entries.iter().any(|entry| entry.path == path)
+        {
+            if event.changed.contains(&path) {
+                let zoom = self.zoom;
+                let pan = self.pan;
+                self.open_image(path);
+                self.zoom = zoom;
+                self.pan = pan;
+            }
+            return;
+        }
+        let next = replacement_path(self.path.as_deref(), &previous_view, self.viewer_entries());
+        if let Some(path) = next {
+            self.open_image(path);
+        } else {
+            self.generation += 1;
+            self.loader.cancel();
+            self.budget.set_foreground_loading(false);
+            self.detail.clear();
+            self.preview = None;
+            self.path = None;
+            self.metadata_dirty = false;
+            self.loading = false;
+            self.error = None;
+            self.grid_view = true;
+            if let Some(folder) = &self.folder {
+                self.path_input = folder.to_string_lossy().into_owned();
+            }
         }
     }
 
@@ -482,6 +580,21 @@ impl RasteraApp {
         let Some(path) = std::env::var_os("RASTERA_CAPTURE_TO") else {
             return;
         };
+        if !self.capture_library_ready
+            && !self.folder_loading
+            && self.folder_polling.is_some()
+            && self.catalog.ready
+            && self.preview.is_some()
+            && !self.loading
+            && !self.grid.busy()
+            && let Some(ready) = std::env::var_os("RASTERA_CAPTURE_READY_FILE")
+        {
+            if let Err(error) = std::fs::write(ready, b"ready") {
+                eprintln!("No se pudo preparar la comprobación de cambios: {error}");
+                std::process::exit(1);
+            }
+            self.capture_library_ready = true;
+        }
         let screenshot = ctx.input(|input| {
             input.events.iter().find_map(|event| {
                 if let egui::Event::Screenshot { image, .. } = event {
@@ -516,6 +629,10 @@ impl RasteraApp {
             && !self.batch.busy
             && !self.catalog.bulk_busy
             && !self.detail.busy()
+            && std::env::var("RASTERA_CAPTURE_EXPECT_COUNT")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .is_none_or(|count| self.entries.len() == count)
         {
             let ready_at = self
                 .capture_ready_at
@@ -1062,6 +1179,20 @@ impl RasteraApp {
                     )
                 };
                 ui.label(RichText::new(count).small().color(MUTED));
+                if !self.folder_loading {
+                    ui.separator();
+                    ui.label(RichText::new(if self.folder_error.is_some() {
+                        "Reintentando lectura"
+                            } else if self.folder_polling == Some(true) {
+                        "Revisión cada 15 s"
+                            } else if self.folder_polling.is_none() {
+                                "Activando actualización…"
+                    } else {
+                        "Actualización automática"
+                    }).small().color(MUTED)).on_hover_text(
+                        "Los cambios en esta carpeta actualizan la biblioteca. Se conservan los filtros y la selección de archivos que siguen presentes."
+                    );
+                }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if self.catalog.bulk_busy
@@ -1468,6 +1599,26 @@ impl RasteraApp {
         }
     }
 }
+fn replacement_path(
+    current: Option<&std::path::Path>,
+    previous: &[FolderEntry],
+    entries: &[FolderEntry],
+) -> Option<PathBuf> {
+    let present: HashSet<_> = entries.iter().map(|entry| &entry.path).collect();
+    if let Some(index) = previous
+        .iter()
+        .position(|entry| Some(entry.path.as_path()) == current)
+    {
+        return previous[index + 1..]
+            .iter()
+            .chain(previous[..index].iter().rev())
+            .find(|entry| present.contains(&entry.path))
+            .or_else(|| entries.first())
+            .map(|entry| entry.path.clone());
+    }
+    entries.first().map(|entry| entry.path.clone())
+}
+
 fn anchored_pan(center: egui::Pos2, pan: Vec2, pointer: egui::Pos2, ratio: f32) -> Vec2 {
     pointer - center - (pointer - (center + pan)) * ratio
 }
@@ -1639,6 +1790,112 @@ impl eframe::App for RasteraApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
+
+    fn wait_app(
+        app: &mut RasteraApp,
+        ctx: &egui::Context,
+        predicate: impl Fn(&RasteraApp) -> bool,
+    ) {
+        let deadline = Instant::now() + Duration::from_secs(6);
+        loop {
+            app.receive(ctx);
+            if predicate(app) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "library did not reach the expected state"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn live_library_keeps_selection_organization_and_zoom_then_moves_removed_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let images = dir.path().join("images");
+        std::fs::create_dir(&images).unwrap();
+        let a = images.join("a.png");
+        let b = images.join("b.png");
+        let c = images.join("c.png");
+        for path in [&a, &b] {
+            image::RgbaImage::new(8, 8).save(path).unwrap();
+        }
+        let ctx = egui::Context::default();
+        let catalog = crate::catalog::Catalog::for_test(dir.path().join("catalog.sqlite"));
+        let mut app = RasteraApp::with_catalog(&ctx, Some(images.clone()), catalog);
+        wait_app(&mut app, &ctx, |app| {
+            !app.folder_loading && app.preview.is_some() && app.catalog.ready
+        });
+        app.open_image(a.clone());
+        wait_app(&mut app, &ctx, |app| !app.loading && app.preview.is_some());
+        app.catalog.toggle_favorite(&a, None);
+        app.grid.selected.extend([a.clone(), b.clone()]);
+        app.grid_view = false;
+        app.zoom = Some(2.5);
+        app.pan = egui::vec2(12.0, 24.0);
+        image::RgbaImage::new(16, 8).save(&a).unwrap();
+        image::RgbaImage::new(8, 8).save(&c).unwrap();
+        wait_app(&mut app, &ctx, |app| {
+            app.entries.len() == 3
+                && app
+                    .preview
+                    .as_ref()
+                    .is_some_and(|p| p.source_size.x == 16.0)
+        });
+        assert_eq!(app.zoom, Some(2.5));
+        assert_eq!(app.pan, egui::vec2(12.0, 24.0));
+        assert_eq!(app.grid.selected, HashSet::from([a.clone(), b.clone()]));
+        assert!(app.catalog.annotation(&a).unwrap().favorite);
+        assert!(!app.grid_view);
+        std::fs::remove_file(&a).unwrap();
+        wait_app(&mut app, &ctx, |app| {
+            app.path.as_ref() == Some(&b) && app.preview.is_some()
+        });
+        assert_eq!(app.grid.selected, HashSet::from([b.clone()]));
+        for path in [&b, &c] {
+            std::fs::remove_file(path).unwrap();
+        }
+        wait_app(&mut app, &ctx, |app| app.entries.is_empty());
+        assert!(app.path.is_none() && app.preview.is_none() && !app.loading);
+        assert!(app.grid_view);
+        image::RgbaImage::new(8, 8).save(&c).unwrap();
+        wait_app(&mut app, &ctx, |app| {
+            app.path.as_ref() == Some(&c) && app.preview.is_some()
+        });
+    }
+
+    #[test]
+    fn removal_uses_next_surviving_image_in_filtered_order_then_previous() {
+        let entries = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| FolderEntry {
+                    path: name.into(),
+                    stamp: None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let old = entries(&["d.png", "c.png", "b.png", "a.png"]);
+        assert_eq!(
+            replacement_path(
+                Some(std::path::Path::new("c.png")),
+                &old,
+                &entries(&["d.png", "a.png"])
+            ),
+            Some("a.png".into())
+        );
+        assert_eq!(
+            replacement_path(
+                Some(std::path::Path::new("a.png")),
+                &old,
+                &entries(&["d.png", "b.png"])
+            ),
+            Some("b.png".into())
+        );
+        assert!(replacement_path(None, &old, &[]).is_none());
+    }
     #[test]
     fn zoom_keeps_the_source_point_under_the_cursor() {
         let center = egui::pos2(400.0, 300.0);

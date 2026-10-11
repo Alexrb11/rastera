@@ -6,10 +6,11 @@ use crate::{
     images::{io_error, stamp},
 };
 use rastera_core::{
-    CancellationToken, DecodedImage, ErrorKind, ImageBackend, ImageInfo, RasteraError, Result,
+    CancellationToken, DecodedImage, ErrorKind, FileStamp, FolderEntry, ImageBackend, ImageInfo,
+    RasteraError, Result,
 };
 use std::{
-    collections::hash_map::DefaultHasher,
+    collections::{HashMap, HashSet, hash_map::DefaultHasher},
     fs,
     hash::{Hash, Hasher},
     io::Write,
@@ -44,6 +45,8 @@ pub struct CachedThumbnails {
     maintenance_ns: AtomicU64,
     maintenance_files: AtomicU64,
     evicted_files: AtomicU64,
+    invalidations: Mutex<HashMap<PathBuf, (u64, bool)>>,
+    revision: AtomicU64,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct ThumbnailCacheStats {
@@ -76,6 +79,8 @@ impl CachedThumbnails {
             maintenance_ns: AtomicU64::new(0),
             maintenance_files: AtomicU64::new(0),
             evicted_files: AtomicU64::new(0),
+            invalidations: Mutex::new(HashMap::new()),
+            revision: AtomicU64::new(0),
         }
     }
     pub fn stats(&self) -> ThumbnailCacheStats {
@@ -88,9 +93,31 @@ impl CachedThumbnails {
             evicted_files: self.evicted_files.load(Ordering::Relaxed),
         }
     }
-    fn key(path: &Path, info: &ImageInfo, edge: u32) -> Vec<u8> {
+    /// Called on the folder worker. It never touches originals or scans the cache.
+    pub fn invalidate_changed(
+        &self,
+        entries: &[FolderEntry],
+        changed: &HashSet<PathBuf>,
+        cancel: &CancellationToken,
+    ) {
+        let paths: HashSet<_> = entries.iter().map(|entry| &entry.path).collect();
+        let mut invalidations = self.invalidations.lock().unwrap_or_else(|e| e.into_inner());
+        invalidations.retain(|path, _| paths.contains(path));
+        for entry in entries.iter().filter(|entry| changed.contains(&entry.path)) {
+            if cancel.check().is_err() {
+                break;
+            }
+            let revision = self.revision.fetch_add(1, Ordering::Relaxed) + 1;
+            invalidations.insert(entry.path.clone(), (revision, true));
+            if let (Some(root), Some(stamp)) = (&self.root, &entry.stamp) {
+                let key = Self::key(&entry.path, stamp, 256);
+                let _ = fs::remove_file(root.join(format!("{:016x}.thumb", Self::hash(&key))));
+            }
+        }
+    }
+    fn key(path: &Path, stamp: &FileStamp, edge: u32) -> Vec<u8> {
         let mut key = path_key(path);
-        key.extend(format!("|{:?}|{edge}|pipeline-3-source-size", info.stamp).bytes());
+        key.extend(format!("|{stamp:?}|{edge}|pipeline-3-source-size").bytes());
         key
     }
     fn hash(bytes: &[u8]) -> u64 {
@@ -257,7 +284,13 @@ impl ImageBackend for CachedThumbnails {
                 "El original cambió durante la carga",
             ));
         }
-        let key = Self::key(path, info, edge);
+        let key = Self::key(path, &info.stamp, edge);
+        let invalidation = self
+            .invalidations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(path)
+            .copied();
         let cache = self
             .root
             .as_ref()
@@ -265,7 +298,9 @@ impl ImageBackend for CachedThumbnails {
         if let Some(root) = &self.root {
             self.maintain(root, 0, cancel)?;
         }
-        if let Some(image) = cache.as_ref().and_then(|p| Self::read(p, &key, info, edge)) {
+        if !invalidation.is_some_and(|(_, dirty)| dirty)
+            && let Some(image) = cache.as_ref().and_then(|p| Self::read(p, &key, info, edge))
+        {
             cancel.check()?;
             if stamp(fs::metadata(path).map_err(io_error)?) == info.stamp {
                 self.hits.fetch_add(1, Ordering::Relaxed);
@@ -279,9 +314,22 @@ impl ImageBackend for CachedThumbnails {
         self.misses.fetch_add(1, Ordering::Relaxed);
         let image = self.source.decode(path, info, edge, cancel)?;
         cancel.check()?;
+        let mut invalidations = self.invalidations.lock().unwrap_or_else(|e| e.into_inner());
+        if invalidations.get(path).map(|(revision, _)| *revision)
+            != invalidation.map(|(revision, _)| revision)
+        {
+            return Err(RasteraError::new(
+                ErrorKind::Changed,
+                "El original cambió durante la carga",
+            ));
+        }
         if let Some(cache) = cache
             && let Ok(written) = self.write(&cache, &key, &image)
         {
+            if let Some((_, dirty)) = invalidations.get_mut(path) {
+                *dirty = false;
+            }
+            drop(invalidations);
             self.maintain(cache.parent().unwrap(), written, cancel)?;
         }
         Ok(image)
@@ -293,6 +341,52 @@ mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
     struct Counting(AtomicUsize);
+    #[test]
+    fn notification_invalidates_identical_stamp_and_survives_cache_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.png");
+        let root = dir.path().join("cache");
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([255, 0, 0, 255]))
+            .save(&path)
+            .unwrap();
+        let cache = CachedThumbnails::new(Some(root.clone()));
+        let info = cache.inspect(&path).unwrap();
+        let red = cache
+            .decode(&path, &info, 256, &CancellationToken::default())
+            .unwrap();
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([0, 255, 0, 255]))
+            .save(&path)
+            .unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(info.stamp.modified.unwrap()))
+            .unwrap();
+        assert_eq!(cache.inspect(&path).unwrap().stamp, info.stamp);
+        cache.invalidate_changed(
+            &[FolderEntry {
+                path: path.clone(),
+                stamp: Some(info.stamp.clone()),
+            }],
+            &HashSet::from([path.clone()]),
+            &CancellationToken::default(),
+        );
+        let green = cache
+            .decode(&path, &info, 256, &CancellationToken::default())
+            .unwrap();
+        assert_ne!(green.rgba, red.rgba);
+        assert_eq!(green.rgba[..4], [0, 255, 0, 255]);
+        let restarted = CachedThumbnails::new(Some(root));
+        assert_eq!(
+            restarted
+                .decode(&path, &info, 256, &CancellationToken::default())
+                .unwrap()
+                .rgba,
+            green.rgba
+        );
+        assert_eq!(restarted.stats().hits, 1);
+    }
     #[test]
     fn repeated_hits_skip_inventory_and_elapsed_time_reconciles_external_entries() {
         let dir = tempfile::tempdir().unwrap();

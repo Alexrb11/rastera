@@ -218,6 +218,19 @@ mod tests {
                     .is_some_and(|entries| entries.len() == 1)
         });
         assert!(!recovered.polling);
+        // A burst must converge to the filesystem, regardless of event order or duplication.
+        for index in 0..60 {
+            fs::write(dir.join(format!("ráfaga-{index}.png")), [1, 2]).unwrap();
+        }
+        fs::write(dir.join("omitido.txt"), [3]).unwrap();
+        fs::create_dir(dir.join("subcarpeta")).unwrap();
+        fs::write(dir.join("subcarpeta/oculta.png"), [3]).unwrap();
+        wait(&|event| {
+            event
+                .entries
+                .as_ref()
+                .is_some_and(|entries| entries.len() == 61)
+        });
     }
 
     #[test]
