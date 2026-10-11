@@ -536,7 +536,10 @@ impl Catalog {
                         .id(egui::Id::new("catalog-search"))
                         .desired_width((ui.available_width() - 375.0).clamp(160.0, 350.0)),
                 )
-                .on_hover_text("Buscar en esta carpeta · Ctrl+F")
+                .on_hover_text(format!(
+                    "Buscar en esta carpeta · {}",
+                    crate::theme::shortcut(egui::Modifiers::COMMAND, egui::Key::F)
+                ))
                 .changed();
             self.dirty |= ui
                 .selectable_value(&mut self.favorites, false, "Todas")

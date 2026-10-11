@@ -9,6 +9,20 @@ pub const ACCENT: Color32 = Color32::from_rgb(116, 177, 246);
 pub const SELECTED: Color32 = Color32::from_rgb(38, 61, 86);
 pub const CANVAS: Color32 = Color32::from_rgb(19, 21, 24);
 
+/// Match egui's COMMAND modifier: Command on macOS and Control elsewhere.
+pub fn command_name() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Cmd"
+    } else {
+        "Ctrl"
+    }
+}
+
+pub fn shortcut(modifiers: egui::Modifiers, key: egui::Key) -> String {
+    egui::KeyboardShortcut::new(modifiers, key)
+        .format(&egui::ModifierNames::NAMES, cfg!(target_os = "macos"))
+}
+
 pub fn display_path(path: &std::path::Path) -> String {
     let text = path.to_string_lossy();
     if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {

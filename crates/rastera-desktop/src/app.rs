@@ -708,27 +708,57 @@ impl RasteraApp {
                     .spacing([24.0, 10.0])
                     .show(ui, |ui| {
                         for (key, action) in [
-                            ("Ctrl+O", "Abrir imagen"),
-                            ("Ctrl+Shift+O", "Abrir carpeta"),
-                            ("Ctrl+A", "Seleccionar los resultados del filtro"),
-                            ("Ctrl+F", "Buscar en la carpeta"),
-                            ("Ctrl+E", "Exportar la selección o imagen"),
-                            ("Ctrl+Shift+T", "Organizar la selección de Biblioteca"),
-                            ("F4 / F5", "Abrir una ruta / actualizar carpeta"),
-                            ("Ctrl+clic", "Añadir o quitar de la selección"),
-                            ("Shift+clic", "Seleccionar un rango"),
                             (
-                                "Flechas / Home / End",
+                                theme::shortcut(egui::Modifiers::COMMAND, egui::Key::O),
+                                "Abrir imagen",
+                            ),
+                            (
+                                theme::shortcut(
+                                    egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                                    egui::Key::O,
+                                ),
+                                "Abrir carpeta",
+                            ),
+                            (
+                                theme::shortcut(egui::Modifiers::COMMAND, egui::Key::A),
+                                "Seleccionar los resultados del filtro",
+                            ),
+                            (
+                                theme::shortcut(egui::Modifiers::COMMAND, egui::Key::F),
+                                "Buscar en la carpeta",
+                            ),
+                            (
+                                theme::shortcut(egui::Modifiers::COMMAND, egui::Key::E),
+                                "Exportar la selección o imagen",
+                            ),
+                            (
+                                theme::shortcut(
+                                    egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                                    egui::Key::T,
+                                ),
+                                "Organizar la selección de Biblioteca",
+                            ),
+                            ("F4 / F5".into(), "Abrir una ruta / actualizar carpeta"),
+                            (
+                                format!("{}+clic", theme::command_name()),
+                                "Añadir o quitar de la selección",
+                            ),
+                            ("Shift+clic".into(), "Seleccionar un rango"),
+                            (
+                                "Flechas / Home / End".into(),
                                 "Navegar por miniaturas / primera / última",
                             ),
-                            ("RePág / AvPág", "Mover una página en Biblioteca"),
-                            ("Shift+flechas", "Seleccionar un rango en Biblioteca"),
-                            ("Ctrl+flechas / Espacio", "Mover foco / cambiar selección"),
-                            ("Enter", "Abrir la miniatura en el visor"),
-                            ("Esc", "Cerrar panel / deseleccionar / volver"),
-                            ("← / →", "Imagen anterior / siguiente en el visor"),
-                            ("Home", "Ajustar a ventana"),
-                            ("+ / −", "Ampliar / reducir"),
+                            ("RePág / AvPág".into(), "Mover una página en Biblioteca"),
+                            ("Shift+flechas".into(), "Seleccionar un rango en Biblioteca"),
+                            (
+                                format!("{}+flechas / Espacio", theme::command_name()),
+                                "Mover foco / cambiar selección",
+                            ),
+                            ("Enter".into(), "Abrir la miniatura en el visor"),
+                            ("Esc".into(), "Cerrar panel / deseleccionar / volver"),
+                            ("← / →".into(), "Imagen anterior / siguiente en el visor"),
+                            ("Home".into(), "Ajustar a ventana"),
+                            ("+ / −".into(), "Ampliar / reducir"),
                         ] {
                             ui.label(RichText::new(key).color(ACCENT));
                             ui.label(action);
@@ -780,14 +810,22 @@ impl RasteraApp {
             ui.add_space(8.0);
             ui.menu_button("Archivo", |ui| {
                 if ui
-                    .add(egui::Button::new("Abrir carpeta…").shortcut_text("Ctrl+Shift+O"))
+                    .add(
+                        egui::Button::new("Abrir carpeta…").shortcut_text(theme::shortcut(
+                            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                            egui::Key::O,
+                        )),
+                    )
                     .clicked()
                 {
                     self.pick_path(ui.ctx(), true);
                     ui.close();
                 }
                 if ui
-                    .add(egui::Button::new("Abrir imagen…").shortcut_text("Ctrl+O"))
+                    .add(
+                        egui::Button::new("Abrir imagen…")
+                            .shortcut_text(theme::shortcut(egui::Modifiers::COMMAND, egui::Key::O)),
+                    )
                     .clicked()
                 {
                     self.pick_file(ui.ctx());
@@ -849,7 +887,10 @@ impl RasteraApp {
                     .add_enabled(
                         (!self.grid.selected.is_empty() && self.catalog.can_edit())
                             || self.catalog.bulk_busy,
-                        egui::Button::new("Organizar selección…").shortcut_text("Ctrl+Shift+T"),
+                        egui::Button::new("Organizar selección…").shortcut_text(theme::shortcut(
+                            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                            egui::Key::T,
+                        )),
                     )
                     .clicked()
                 {
@@ -859,7 +900,8 @@ impl RasteraApp {
                 if ui
                     .add_enabled(
                         !self.grid.selected.is_empty() || self.path.is_some() || self.batch.busy,
-                        egui::Button::new("Exportar imágenes…"),
+                        egui::Button::new("Exportar imágenes…")
+                            .shortcut_text(theme::shortcut(egui::Modifiers::COMMAND, egui::Key::E)),
                     )
                     .clicked()
                 {
@@ -893,7 +935,7 @@ impl RasteraApp {
                         self.dialog.is_none(),
                         egui::Button::new("Abrir imagen…").frame(false),
                     )
-                    .on_hover_text("Ctrl+O")
+                    .on_hover_text(theme::shortcut(egui::Modifiers::COMMAND, egui::Key::O))
                     .clicked()
                 {
                     self.pick_file(ui.ctx());
@@ -903,7 +945,10 @@ impl RasteraApp {
                         self.dialog.is_none(),
                         egui::Button::new("Abrir carpeta…").frame(false),
                     )
-                    .on_hover_text("Ctrl+Shift+O")
+                    .on_hover_text(theme::shortcut(
+                        egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                        egui::Key::O,
+                    ))
                     .clicked()
                 {
                     self.pick_path(ui.ctx(), true);
@@ -1003,7 +1048,8 @@ impl RasteraApp {
                 if ui
                     .add_enabled(
                         !self.catalog.filtered.is_empty(),
-                        egui::Button::new("Seleccionar todo").shortcut_text("Ctrl+A"),
+                        egui::Button::new("Seleccionar todo")
+                            .shortcut_text(theme::shortcut(egui::Modifiers::COMMAND, egui::Key::A)),
                     )
                     .clicked()
                 {
@@ -1206,9 +1252,9 @@ impl RasteraApp {
                 } else if ui.ctx().viewport_rect().width() >= 980.0 {
                     ui.label(
                         RichText::new(if self.grid_view {
-                            "Ctrl+F  Buscar    ·    Doble clic  Abrir"
+                            format!("{}  Buscar    ·    Doble clic  Abrir", theme::shortcut(egui::Modifiers::COMMAND, egui::Key::F))
                         } else {
-                            "Rueda  Zoom    ·    Arrastrar  Desplazar    ·    Home  Ajustar"
+                            "Rueda  Zoom    ·    Arrastrar  Desplazar    ·    Home  Ajustar".into()
                         })
                         .small()
                         .color(MUTED),
@@ -1578,7 +1624,10 @@ impl RasteraApp {
                 text_width,
             );
             let hint = painter.layout(
-                "JPEG · PNG · WebP  |  Ctrl+O para abrir".to_owned(),
+                format!(
+                    "JPEG · PNG · WebP  |  {} para abrir",
+                    theme::shortcut(egui::Modifiers::COMMAND, egui::Key::O)
+                ),
                 egui::FontId::proportional(15.0),
                 MUTED,
                 text_width,
@@ -1808,6 +1857,56 @@ mod tests {
                 "library did not reach the expected state"
             );
             std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn library_shortcuts_accept_native_control_and_mac_command_events() {
+        for command in [
+            egui::Modifiers::CTRL | egui::Modifiers::COMMAND,
+            egui::Modifiers::MAC_CMD | egui::Modifiers::COMMAND,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let ctx = egui::Context::default();
+            let catalog = crate::catalog::Catalog::for_test(dir.path().join("catalog.sqlite"));
+            let mut app = RasteraApp::with_catalog(&ctx, None, catalog);
+            app.folder = Some(dir.path().to_path_buf());
+            app.grid_view = true;
+            app.catalog.ready = true;
+            app.catalog.filtered = ["one.png", "two.png"]
+                .map(|name| FolderEntry {
+                    path: dir.path().join(name),
+                    stamp: None,
+                })
+                .into();
+
+            let press = |app: &mut RasteraApp, key, modifiers| {
+                let input = egui::RawInput {
+                    events: vec![egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers,
+                    }],
+                    ..Default::default()
+                };
+                let mut output = ctx.run_ui(input, |_| app.shortcuts(&ctx));
+                output.textures_delta.clear();
+            };
+            press(&mut app, egui::Key::A, command);
+            assert_eq!(app.grid.selected.len(), 2);
+
+            press(&mut app, egui::Key::E, command);
+            assert!(app.batch.open);
+            app.batch.open = false;
+            press(&mut app, egui::Key::T, command | egui::Modifiers::SHIFT);
+            assert!(app.catalog.bulk_open);
+            app.catalog.bulk_open = false;
+
+            app.grid_view = false;
+            press(&mut app, egui::Key::F, command);
+            assert!(app.grid_view);
         }
     }
 

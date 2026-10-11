@@ -596,8 +596,9 @@ impl ThumbnailGrid {
                                 );
                             }
                             response.clone().on_hover_text(format!(
-                                "{name}\n{}\nCtrl+clic: añadir · Shift+clic: rango",
-                                path.display()
+                                "{name}\n{}\n{}+clic: añadir · Shift+clic: rango",
+                                path.display(),
+                                theme::command_name()
                             ));
                             if response.clicked() {
                                 keyboard.request_focus();
@@ -712,7 +713,7 @@ mod tests {
         assert_eq!(grid.scroll_offset, 328.0);
     }
     #[test]
-    fn keyboard_ranges_preserve_anchor_and_ctrl_moves_without_replacing_selection() {
+    fn keyboard_ranges_preserve_anchor_and_command_moves_without_replacing_selection() {
         let ctx = egui::Context::default();
         let mut grid = ThumbnailGrid::new(&ctx, MemoryBudget::new(rastera_core::CPU_IMAGE_BUDGET));
         let entries: Vec<_> = (0..10)
@@ -750,9 +751,14 @@ mod tests {
             egui::Modifiers::SHIFT,
         );
         assert_eq!(grid.selected, [entries[0].path.clone()].into());
-        grid.navigate(&entries, None, egui::Key::End, 1, egui::Modifiers::COMMAND);
-        assert_eq!(grid.focused, Some(entries[9].path.clone()));
-        assert_eq!(grid.selected, [entries[0].path.clone()].into());
+        for command in [
+            egui::Modifiers::CTRL | egui::Modifiers::COMMAND,
+            egui::Modifiers::MAC_CMD | egui::Modifiers::COMMAND,
+        ] {
+            grid.navigate(&entries, None, egui::Key::End, 1, command);
+            assert_eq!(grid.focused, Some(entries[9].path.clone()));
+            assert_eq!(grid.selected, [entries[0].path.clone()].into());
+        }
         grid.navigate(
             &entries,
             None,
