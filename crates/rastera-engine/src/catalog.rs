@@ -1,5 +1,7 @@
 use crossbeam_channel::{Receiver, Sender, bounded};
-use rastera_core::{Annotation, CatalogBackend, ErrorKind, ImageInfo, RasteraError, Result};
+use rastera_core::{
+    Annotation, CatalogBackend, CatalogEdit, ErrorKind, ImageInfo, RasteraError, Result,
+};
 use std::{
     path::PathBuf,
     sync::Arc,
@@ -17,9 +19,15 @@ pub enum CatalogCommand {
         annotation: Annotation,
         info: Option<ImageInfo>,
     },
+    Edit {
+        generation: u64,
+        paths: Vec<PathBuf>,
+        edit: CatalogEdit,
+    },
 }
 pub struct CatalogEvent {
     pub generation: u64,
+    pub edited: bool,
     pub result: Result<Vec<(PathBuf, Annotation)>>,
 }
 pub struct CatalogWorker {
@@ -37,9 +45,10 @@ impl CatalogWorker {
         let worker = thread::spawn(move || {
             let mut db = open();
             while let Ok(command) = commands.recv() {
-                let (generation, result) = match command {
+                let (generation, edited, result) = match command {
                     CatalogCommand::Load { generation, paths } => (
                         generation,
+                        false,
                         match &mut db {
                             Ok(db) => db.load(&paths),
                             Err(error) => Err(error.clone()),
@@ -52,6 +61,7 @@ impl CatalogWorker {
                         info,
                     } => (
                         generation,
+                        false,
                         match &mut db {
                             Ok(db) => db
                                 .save(&path, &annotation, info.as_ref())
@@ -59,9 +69,25 @@ impl CatalogWorker {
                             Err(error) => Err(error.clone()),
                         },
                     ),
+                    CatalogCommand::Edit {
+                        generation,
+                        paths,
+                        edit,
+                    } => (
+                        generation,
+                        true,
+                        match &mut db {
+                            Ok(db) => db.edit(&paths, &edit),
+                            Err(error) => Err(error.clone()),
+                        },
+                    ),
                 };
                 // Drain accepted writes even if the window closes before their acknowledgments.
-                let _ = events.send(CatalogEvent { generation, result });
+                let _ = events.send(CatalogEvent {
+                    generation,
+                    edited,
+                    result,
+                });
                 wake();
             }
         });
