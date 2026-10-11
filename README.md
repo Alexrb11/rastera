@@ -14,12 +14,15 @@ El catálogo SQLite guarda favoritos, etiquetas y dimensiones de las imágenes a
 
 También se pueden abrir carpetas mediante diálogo, ruta, arrastre o argumento de inicio. La lectura emite páginas progresivamente y la lista dibuja únicamente las filas visibles. Las flechas permiten pasar al archivo anterior o siguiente. El alcance inicial es una carpeta sin recursión, con un límite de 10.000 archivos y 16 MiB de rutas; los enlaces se excluyen. La lista se ordena por ruta al terminar el escaneo. Una extensión compatible no garantiza que su contenido sea una imagen válida.
 
+La carpeta abierta se actualiza automáticamente al añadir, modificar, renombrar o retirar archivos. Los cambios se agrupan en segundo plano y una revisión cada 15 segundos recupera eventos perdidos. Se conservan los filtros, la selección de rutas presentes y las texturas sin cambios. Un escaneo incompleto conserva la biblioteca anterior y muestra el error mientras reintenta. Las rutas renombradas se consideran nuevas y no heredan favoritos ni etiquetas.
+
 Windows será la primera plataforma de desarrollo. La separación entre interfaz, lógica y adaptadores permitirá incorporar Linux y macOS después de comprobar su integración y distribución.
 
 ## Funciones
 
 - Interfaz de gestor de imágenes con barras compactas, selección por rango y panel de propiedades plegable.
 - Navegación por carpetas con cuadrícula de miniaturas, selección y ordenación.
+- Actualización automática de la carpeta abierta, recarga del visor y recuperación de eventos perdidos.
 - Visor con zoom, desplazamiento, ajuste a ventana y navegación con teclado.
 - Catálogo local con favoritos, etiquetas, búsqueda y organización conjunta de la selección.
 - Navegación de la cuadrícula con flechas, páginas, rangos con Shift y apertura con Enter.

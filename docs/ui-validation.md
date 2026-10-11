@@ -37,3 +37,21 @@ La entrega añade navegación y selección de la cuadrícula con teclado y organ
 Organizar selección se capturó antes y después de un guardado real a 1180 × 780 y 760 × 480 puntos. Se comprobó que los catálogos de vista previa permanecen sin la nueva etiqueta; los catálogos guardados contienen colección-demo y conservan las etiquetas particulares de las tres imágenes. Una imagen estaba oculta por el filtro y recibió el cambio por pertenecer a la selección. Los archivos originales permanecen iguales al contenido versionado. La validación del teclado usa eventos de egui; queda pendiente comprobar lectores de pantalla e interacción prolongada en otros entornos.
 
 Las compilaciones normal y optimizada, el formato y Clippy con todas las características pasan. El tutorial actualizado se comprobó en Brave a 1400 y 390 píxeles: 14 imágenes cargadas, sin desbordamiento horizontal ni errores de JavaScript, ampliación y cierre con Esc correctos y descarga con SHA-256 idéntico al original.
+
+## Actualización automática de carpetas · 11 de octubre de 2026
+
+Implementación: f84c1ac y 4981de7. Las 67 pruebas del workspace pasan. Las pruebas nuevas comprueban recuperación de eventos perdidos, ausencia de repintados tras revisiones sin cambios, cancelación de generaciones, escaneos incompletos, filtros, selección y conservación de miniaturas válidas. También comprueban recarga de la imagen abierta con zoom y desplazamiento, cambio a una vecina al retirar esa imagen, carpeta vacía que recibe nuevos archivos y eliminación de respuestas tardías del estado activo del catálogo.
+
+La prueba nativa de Windows usa un directorio temporal con nombres Unicode: añade, modifica, renombra y retira archivos, elimina el directorio y lo vuelve a crear, y termina con una ráfaga de 60 imágenes. Excluye un archivo de texto y una imagen en una subcarpeta. La recuperación del directorio usa el intervalo real de respaldo; por eso esta prueba dura aproximadamente 33 segundos. Otra prueba altera los píxeles conservando tamaño y fecha, invalida la miniatura mediante un indicio y comprueba que la caché reabierta devuelve los nuevos píxeles.
+
+Se capturó la aplicación real a 1180 × 780 y 760 × 480 puntos, con Windows al 150%. El script espera a que termine la apertura, cargue las miniaturas y esté activo el observador antes de modificar copias aisladas: reemplaza la taza por el jarrón bajo la misma ruta, renombra el cuenco y añade una imagen. La captura espera a recibir tres entradas sin usar F5. Se revisó visualmente la nueva miniatura, las nuevas rutas, el inspector actualizado, la conservación de la selección de la ruta presente y el estado Actualización automática, sin recortes en ninguna ventana.
+
+```powershell
+cargo build -p rastera-desktop --features capture --locked
+.\scripts\capture-folder-changes.ps1
+.\scripts\capture-folder-changes.ps1 -ViewportSize 760x480 -CaptureDirectory work/folder-changes/compact
+```
+
+El script usa un catálogo y copias nuevos por ejecución y restaura las variables de entorno. Las capturas y datos quedan en work/folder-changes. La característica capture habilita solo el protocolo de comprobación; la build normal no acepta esas variables. Se mantienen los límites de una carpeta no recursiva y la identidad por ruta: los renombrados externos no trasladan la organización. Esta comprobación no mide latencia de entrada humana ni valida observadores en redes, Linux o macOS.
+
+Formato y Clippy con todos los targets y características pasan. Las builds normal y de release compilan y declaran capture=false mediante --build-info.
